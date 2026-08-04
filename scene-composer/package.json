@@ -1,0 +1,19 @@
+{
+  "name": "scene-composer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "vite": "^8.2.0"
+  },
+  "dependencies": {
+    "fabric": "^7.4.0"
+  }
+}

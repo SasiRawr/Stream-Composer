@@ -1,0 +1,250 @@
+/* ============================================================================
+   Scene Composer styles
+   ============================================================================
+   Same dark/violet look Stream-Builder's app/ uses, for visual consistency
+   between the two apps even though they're separate codebases.
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=JetBrains+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: #0a0a12;
+  color: #f2f1f9;
+  font-family: 'Inter', sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+h1 {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #a594ff;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px 0 24px;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.subtitle {
+  color: #918eae;
+  font-size: 13px;
+  padding: 4px 24px 12px 24px;
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  padding: 0 24px 16px 24px;
+  min-height: 0;
+}
+
+.panel {
+  background: #14151c;
+  border: 1px solid rgba(124, 92, 255, 0.25);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.palette {
+  width: 220px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.properties {
+  width: 280px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.canvas-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.canvas-size-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #918eae;
+}
+
+.canvas-wrap {
+  background:
+    linear-gradient(45deg, #1c1d28 25%, transparent 25%),
+    linear-gradient(-45deg, #1c1d28 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1c1d28 75%),
+    linear-gradient(-45deg, transparent 75%, #1c1d28 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  background-color: #0a0a12;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+.field-row .field { flex: 1; }
+
+label {
+  font-size: 12px;
+  color: #918eae;
+}
+
+input[type="text"], input[type="number"], select, textarea {
+  background: #0a0a12;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: #f2f1f9;
+  padding: 9px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+}
+input[type="color"] {
+  width: 100%;
+  height: 36px;
+  background: #0a0a12;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #7c5cff;
+}
+
+button.primary, button.secondary {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border: none;
+}
+
+button.primary { background: #7c5cff; color: #fff; }
+button.primary:hover { background: #6a4ce0; }
+button.primary:disabled { background: #3a3550; color: #918eae; cursor: not-allowed; }
+
+button.secondary {
+  background: transparent;
+  border: 1px solid rgba(124,92,255,0.4);
+  color: #a594ff;
+}
+button.secondary:hover { background: rgba(124,92,255,0.1); }
+button.secondary:disabled { border-color: rgba(255,255,255,0.08); color: #4d4a63; cursor: not-allowed; }
+
+button.block {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+  text-align: left;
+}
+
+.remove-btn {
+  margin-top: 16px;
+  width: 100%;
+  background: none;
+  border: 1px solid rgba(255, 107, 74, 0.4);
+  color: #ff6b4a;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px;
+  border-radius: 8px;
+}
+.remove-btn:hover { background: rgba(255,107,74,0.1); }
+
+.hint {
+  font-size: 12px;
+  color: #918eae;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
+.slide-card {
+  background: #0a0a12;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.slide-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.slide-card-head span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #918eae;
+}
+
+#status {
+  padding: 8px 24px 14px 24px;
+  font-size: 13px;
+  color: #918eae;
+}
+#status.ok { color: #35e6c4; }
+#status.err { color: #ff6b4a; }
+
+dialog {
+  background: #14151c;
+  color: #f2f1f9;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  border-radius: 14px;
+  padding: 24px;
+  width: 360px;
+}
+dialog::backdrop {
+  background: rgba(0,0,0,0.6);
+}
+dialog .actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}

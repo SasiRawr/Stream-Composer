@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scene Composer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!--
+  ============================================================================
+  SCENE COMPOSER
+  ============================================================================
+  Build a whole stream layout by dragging/resizing items on a canvas sized
+  to your real stream resolution, then "Bake" it into a single OBS Browser
+  Source. This is a separate app from Stream-Builder's popup-slide editor
+  (app/) — see V2_ARCHITECTURE.md for how the two relate.
+
+  A "Frame" item is a positioning guide (for lining up your real OBS camera
+  source, or as a decorative border) — it does NOT capture your webcam.
+  ============================================================================
+-->
+
+<div class="topbar">
+  <h1>Scene Composer</h1>
+  <div class="topbar-actions">
+    <button class="secondary" id="newProjectBtn" type="button">New Project…</button>
+    <button class="secondary" id="openProjectBtn" type="button">Open Project…</button>
+    <button class="primary" id="saveProjectBtn" type="button" disabled>Save Project</button>
+    <button class="primary" id="bakeBtn" type="button" disabled>Bake Browser Source…</button>
+  </div>
+</div>
+<div class="subtitle" id="subtitle">No project open.</div>
+
+<div class="workspace" id="workspace" hidden>
+
+  <div class="palette panel">
+    <h2>Add Item</h2>
+    <button class="secondary block" id="addFrameBtn" type="button">+ Frame / Border</button>
+    <button class="secondary block" id="addImageBtn" type="button">+ Image…</button>
+    <button class="secondary block" id="addPopupSlideBtn" type="button">+ Popup Slide</button>
+    <div class="hint">
+      A Frame is a positioning guide (e.g. for lining up your real OBS
+      camera source underneath it) or a decorative border — it doesn't
+      capture your camera itself.
+    </div>
+  </div>
+
+  <div class="canvas-area">
+    <div class="canvas-size-label" id="canvasSizeLabel"></div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="fabricCanvas"></canvas>
+    </div>
+  </div>
+
+  <div class="properties panel" id="propertiesPanel">
+    <h2>Properties</h2>
+    <div id="propertiesBody">
+      <div class="hint">Select an item on the canvas to edit it.</div>
+    </div>
+    <button class="remove-btn" id="deleteItemBtn" type="button" hidden>Delete item</button>
+  </div>
+
+</div>
+
+<div id="status"></div>
+
+<!--
+  New-project dialog: a plain <dialog> element, kept intentionally simple
+  (native browser element, no extra library) since it's just a couple of
+  fields.
+-->
+<dialog id="newProjectDialog">
+  <h2>New Project</h2>
+  <div class="field">
+    <label for="resolutionPreset">Stream resolution</label>
+    <select id="resolutionPreset">
+      <option value="1920x1080">1920 x 1080 (1080p)</option>
+      <option value="1280x720">1280 x 720 (720p)</option>
+      <option value="640x220">640 x 220 (single popup badge, v1 size)</option>
+      <option value="custom">Custom…</option>
+    </select>
+  </div>
+  <div class="field-row" id="customResolutionRow" hidden>
+    <div class="field">
+      <label for="customWidth">Width (px)</label>
+      <input type="number" id="customWidth" min="1" value="1920">
+    </div>
+    <div class="field">
+      <label for="customHeight">Height (px)</label>
+      <input type="number" id="customHeight" min="1" value="1080">
+    </div>
+  </div>
+  <div class="actions">
+    <button class="primary" id="createProjectBtn" type="button">Create</button>
+    <button class="secondary" id="cancelNewProjectBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
+<script type="module" src="/main.js"></script>
+</body>
+</html>

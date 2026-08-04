@@ -166,18 +166,80 @@ modules via Fabric.js objects directly, or via an embedded live preview
 of the module's own renderer. This interface point should get nailed down
 concretely during the first implementation milestone, not before.
 
+## 5. Beyond background removal: masking, chroma-key, vectorization
+
+Harvey asked (2026-08-04) for the image-editing side to go further than
+just background removal — interactive masking/cutout, green-screen/
+chroma-key, and raster-to-vector conversion, aiming to make the "free
+Photoshop alternative" pitch genuinely indispensable rather than a toy.
+Researched and decided, same standard as §3 (must run 100% locally, no
+paid API, commercially-usable license):
+
+**Interactive masking (click-to-select a subject):** **MobileSAM**
+(Apache 2.0), a compressed build of Meta's Segment Anything Model
+(~40MB, vs. 800MB+ for full SAM2/SAM3), run the same way as BiRefNet —
+locally via Transformers.js/ONNX Runime Web. Click a point on an image,
+get a mask back, entirely client-side. `SlimSAM` is a smaller fallback if
+even MobileSAM proves too heavy for the app bundle. First-run model
+download (tens of MB) and GPU-memory warm-up are real, worth surfacing to
+the user rather than hiding.
+
+**Chroma-key / green-screen:** **not a library dependency at all** — this
+is a classical color-distance algorithm (sample a key color, measure each
+pixel's distance to it, key out/feather within a tolerance, suppress
+color spill at the edges), well within reach as a first-party WebGL
+shader (~100 lines) or canvas pixel-math fallback. Expose key color
+picker, similarity/tolerance, and edge feather as the user-facing
+controls — same parameter set real chroma-key tools expose.
+
+**Vectorization (raster → SVG):** **VTracer** (Rust compiled to WASM,
+dual MIT/Apache-2.0 licensed), not potrace. This mattered: potrace — the
+default first instinct for anyone researching this — is **GPL-2.0**,
+which would force this entire app open-source under GPL if shipped.
+VTracer is actively maintained and runs fully client-side. Real
+limitation to communicate to users: works well on high-contrast/line-art
+(logos, sketches), not photographs — set that expectation in the UI
+rather than let a bad result read as a bug.
+
+These three are **researched and decided, not yet built** — they extend
+the image-editing milestone (§ build order below), they don't replace or
+block the Scene Composer work already in progress.
+
 ---
 
-## Suggested build order (unchanged from the handoff doc's §4.3, still right)
+## 6. Scene Composer — a second, separate app
 
-1. Minimal Tauri shell: open a folder, load `campaign-thenerdybox/` as a
-   Project, edit it through a real UI with actual file save.
-2. Generalize: introduce the Module/schema system, migrate Popup Slide to
-   be a Module rather than a special case, build the generic form editor.
-3. Canvas/masking work (Fabric.js integration, arbitrary masks, image
-   crop/pad).
-4. Background removal (BiRefNet_lite, in-webview).
-5. Additional modules (borders, webcam frames, etc.) — should now be
-   additive, not architectural work, if steps 1-2 were done right.
-6. Export targets beyond local OBS browser source (StreamElements/
+Harvey asked (2026-08-04) for a genuinely different kind of tool than
+`app/`'s form-based popup-slide editor: an OBS/Streamlabs-style canvas
+where you drag, resize, and arrange whole overlay layouts — a webcam
+positioning frame, a popup badge, borders, whatever else — sized to your
+real stream resolution, then "bake" the arrangement into one real OBS
+Browser Source. He explicitly wants this as a **second, separate app**
+(`scene-composer/`), not merged into `app/`.
+
+This is the first real implementation of the Module/Project model from
+§4 above: a Project is a flat list of `{id, type, x, y, width, height,
+rotation, zIndex, props}` placed items on a Fabric.js canvas — exactly
+what §4 specified, just built now with 3 concrete item types (`frame`,
+`image`, `popup-slide`) instead of a fully open plugin registry. Full
+design (data model, bake format, why the webcam element is a positioning
+guide and not live camera capture) lives in the plan this was built
+from — see the project's session history / `RESTART HERE.md` for detail
+not worth duplicating here.
+
+---
+
+## Suggested build order (updated 2026-08-04)
+
+1. ~~Minimal Tauri shell~~ — **done**, shipped as `app/` (Milestone 1).
+2. ~~Generalize to a real Module/schema system~~ — **in progress**, being
+   built directly as `scene-composer/` rather than as a prerequisite step
+   inside `app/` first (see §6).
+3. Additional modules/item types (borders, webcam frames, etc. beyond the
+   first 3) — additive once `scene-composer/`'s item-type pattern exists.
+4. Image editing milestone: background removal (§3, BiRefNet_lite) +
+   masking/chroma-key/vectorization (§5) — a substantial body of work on
+   its own, likely its own set of tools within `scene-composer/` once the
+   canvas/bake foundation is solid.
+5. Export targets beyond local OBS browser source (StreamElements/
    StreamLabs) — separate scoping effort, later.
