@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "app",
+  "productName": "Stream-Builder",
   "version": "0.1.0",
   "identifier": "com.thenerdybox.streambuilder",
   "build": {
@@ -10,9 +10,9 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "app",
-        "width": 800,
-        "height": 600
+        "title": "Stream-Builder",
+        "width": 860,
+        "height": 720
       }
     ],
     "security": {

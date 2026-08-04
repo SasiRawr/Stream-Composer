@@ -1,112 +1,187 @@
-.logo.vanilla:hover {
-  filter: drop-shadow(0 0 2em #ffe21c);
-}
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
+/* ============================================================================
+   Stream-Builder styles
+   ============================================================================
+   Same dark/violet look v1's editor.html used (colors below are the real
+   TheNerdyBox brand tokens, not invented ones — see settings.js for the
+   source). This is just a starting visual style for the app shell, not a
+   final brand decision for the product itself.
+   ========================================================================= */
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=JetBrains+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap');
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
+body {
+  background: #0a0a12;
+  color: #f2f1f9;
+  font-family: 'Inter', sans-serif;
+  padding: 32px;
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 h1 {
-  text-align: center;
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 4px;
 }
 
-input,
-button {
+.subtitle {
+  color: #918eae;
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+
+.panel {
+  background: #14151c;
+  border: 1px solid rgba(124, 92, 255, 0.25);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.panel h2 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #a594ff;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.field-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+label {
+  font-size: 12px;
+  color: #918eae;
+}
+
+input[type="text"], input[type="number"], select {
+  background: #0a0a12;
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
+  color: #f2f1f9;
+  padding: 9px 10px;
+  font-size: 14px;
   font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
+  width: 100%;
 }
 
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
+input:focus, select:focus {
   outline: none;
+  border-color: #7c5cff;
 }
 
-#greet-input {
-  margin-right: 5px;
+.slide-card {
+  background: #0a0a12;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
+.slide-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
 
-  a:hover {
-    color: #24c8db;
-  }
+.slide-card-head span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #918eae;
+}
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
+.remove-btn {
+  background: none;
+  border: none;
+  color: #918eae;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.remove-btn:hover { color: #ff6b4a; background: rgba(255,107,74,0.1); }
+
+.icon-preview {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1c1d28;
+  flex-shrink: 0;
+}
+.icon-preview svg { width: 20px; height: 20px; }
+.icon-preview img { width: 20px; height: 20px; object-fit: contain; }
+
+.icon-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+.icon-row select { flex: 1; }
+
+button.primary, button.secondary {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border: none;
+}
+
+button.primary {
+  background: #7c5cff;
+  color: #fff;
+}
+button.primary:hover { background: #6a4ce0; }
+button.primary:disabled { background: #3a3550; color: #918eae; cursor: not-allowed; }
+
+button.secondary {
+  background: transparent;
+  border: 1px solid rgba(124,92,255,0.4);
+  color: #a594ff;
+}
+button.secondary:hover { background: rgba(124,92,255,0.1); }
+button.secondary:disabled { border-color: rgba(255,255,255,0.08); color: #4d4a63; cursor: not-allowed; }
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+#status {
+  margin-top: 14px;
+  font-size: 13px;
+  color: #918eae;
+  line-height: 1.5;
+}
+#status.ok { color: #35e6c4; }
+#status.err { color: #ff6b4a; }
+
+#projectPathLabel {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #f2f1f9;
+  word-break: break-all;
 }
