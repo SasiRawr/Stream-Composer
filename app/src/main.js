@@ -357,24 +357,50 @@ ${messagesCode}
 }
 
 // ---- Saving: a real, direct overwrite of settings.js on disk ---------------
+// Returns true/false so previewOverlay() below can tell whether it's safe
+// to go on and open the preview.
 async function saveProject() {
-  if (!settingsPath) return;
+  if (!settingsPath) return false;
   const text = buildSettingsFileText();
   try {
     await invoke('write_text_file', { path: settingsPath, contents: text });
     setStatus('Saved to ' + settingsPath, 'ok');
+    return true;
   } catch (err) {
     setStatus(String(err), 'err');
+    return false;
   }
 }
 
-// ---- Preview: open the real overlay engine in the default browser ---------
+// Turns a Windows filesystem path into a proper file:// URL (percent-
+// encoding spaces and the like) so it can be handed to a browser.
+function pathToFileUrl(path) {
+  const normalized = path.replace(/\\/g, '/');
+  const withLeadingSlash = normalized.startsWith('/') ? normalized : '/' + normalized;
+  return 'file://' + encodeURI(withLeadingSlash);
+}
+
+// ---- Preview: save first, then open the real overlay engine in the
+// default browser ------------------------------------------------------------
 // This is the exact same HTML/CSS/JS OBS uses when the folder is added as a
 // Browser Source — opening it in a normal browser shows the true animation.
+//
+// Two things this deliberately does to avoid "I changed a setting and
+// nothing looks different":
+//   1. It saves the current form state FIRST. Otherwise clicking Preview
+//      without clicking Save first would always show whatever was last
+//      saved, no matter what's selected in the form right now.
+//   2. It adds a `?t=<timestamp>` to the URL so it's a brand new address
+//      every time, forcing a real reload instead of a browser just
+//      re-focusing an old preview tab that's still running yesterday's
+//      settings.js in memory.
 async function previewOverlay() {
-  if (!overlayPath) return;
+  if (!settingsPath || !overlayPath) return;
+  const saved = await saveProject();
+  if (!saved) return;
+  const url = pathToFileUrl(overlayPath) + '?t=' + Date.now();
   try {
-    await invoke('preview_overlay', { path: overlayPath });
+    await invoke('preview_overlay', { url });
   } catch (err) {
     setStatus(String(err), 'err');
   }

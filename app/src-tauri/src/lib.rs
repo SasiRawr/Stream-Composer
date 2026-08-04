@@ -51,15 +51,22 @@ fn file_exists(path: String) -> bool {
     std::path::Path::new(&path).is_file()
 }
 
-/// Opens a file with whatever the operating system's default app for it is.
-/// Used by the "Preview" button: it opens stream-popup-overlay.html in the
-/// user's normal browser, so they can watch the popup actually animate —
-/// the exact same HTML/CSS/JS engine OBS uses when this is added as a
-/// Browser Source, just viewed in a regular browser tab instead.
+/// Opens a URL with whatever the operating system's default browser is.
+/// Used by the "Save & Preview" button: it opens stream-popup-overlay.html
+/// so the user can watch the popup actually animate — the exact same
+/// HTML/CSS/JS engine OBS uses when this is added as a Browser Source,
+/// just viewed in a regular browser tab instead.
+///
+/// This takes a full `file://...` URL (with a cache-busting `?t=...` on the
+/// end) rather than a plain file path, specifically so a browser that
+/// already has an old preview tab open is forced to load fresh instead of
+/// just re-focusing that stale tab — otherwise editing settings.js again
+/// and clicking Preview again could keep showing the FIRST preview's
+/// content forever, which looks exactly like "nothing I change matters."
 #[tauri::command]
-fn preview_overlay(app: tauri::AppHandle, path: String) -> Result<(), String> {
+fn preview_overlay(app: tauri::AppHandle, url: String) -> Result<(), String> {
     app.opener()
-        .open_path(path, None::<&str>)
+        .open_url(url, None::<&str>)
         .map_err(|err| err.to_string())
 }
 
