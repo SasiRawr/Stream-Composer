@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Stream Popup Overlay</title>
+
+<!--
+  ============================================================================
+  STREAM POPUP OVERLAY  —  built the same way the Nerd or Die popup works:
+  it's a self-contained webpage that OBS loads as a "Browser Source".
+  There are no PNG frames or a JSON timing file here — everything is drawn
+  and animated live by CSS + a little JavaScript. That's actually BETTER
+  than a baked PNG/GIF sequence for a stream overlay because:
+    - it stays perfectly sharp at any resolution (no upscale blur)
+    - you can change text/colors/timing by editing plain values below
+    - the background is truly transparent, no green-screen chroma needed
+
+  HOW TO USE THIS IN OBS:
+    1. In OBS, add a new Source -> "Browser Source"
+    2. Check "Local file", then browse to this .html file
+    3. Set Width = 640, Height = 220 (or whatever fits your layout)
+    4. Leave "Shutdown source when not visible" UNCHECKED so the loop
+       keeps running consistently
+    5. That's it — the badge will slide in, cycle through your messages,
+       then slide out, forever on a loop.
+
+  HOW TO CUSTOMIZE:
+    Open "settings.js" (the small file that sits next to this one) —
+    that's where your messages, colors, and timing live. This HTML file
+    just runs the animation and shouldn't need editing.
+
+    IMPORTANT: keep settings.js in the same folder as this file, or the
+    overlay won't know what to display.
+  ============================================================================
+-->
+
+<style>
+  /* Fonts from your brand kit: Bricolage Grotesque ExtraBold for the main
+     message (the site's display face), JetBrains Mono for the small tag
+     label (the site uses it for labels/status text), Inter as the base. */
+  @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@800&family=JetBrains+Mono:wght@600&family=Inter:wght@500;600&display=swap');
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  /* IMPORTANT: html/body must have NO background so OBS shows it as transparent. */
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+  }
+
+  :root {
+    /* ---- COLOR TOKENS -----------------------------------------------------
+       These are fallback defaults — settings.js overrides them at runtime
+       with your real brand colors, so you shouldn't need to edit these. */
+    --void: #0a0a12;         /* badge background */
+    --violet: #7c5cff;       /* primary accent (icon ring, frame) */
+    --violet-soft: #a594ff;  /* secondary accent (the tag label) */
+    --ink: #f2f1f9;          /* main text color */
+    --mute: #918eae;         /* muted/secondary text */
+  }
+
+  .badge-wrap {
+    position: fixed;
+    right: 40px;
+    bottom: 40px;
+    display: flex;
+    align-items: center;
+    height: 64px;
+    /* Off-screen starting position: parked to the right, invisible. */
+    transform: translateX(140%);
+    opacity: 0;
+    transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.4s ease;
+  }
+
+  .badge-wrap.is-visible {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  /* ---- ICON BOX ------------------------------------------------------- */
+  .icon-box {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+    border-radius: 16px;
+    background: linear-gradient(145deg, var(--void), #14141f);
+    box-shadow: 0 0 0 1.5px rgba(124, 92, 255, 0.35),
+                0 8px 24px rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+  }
+
+  /* Pulsing ring — the one signature animated flourish. Kept violet rather
+     than the brand's "live" green, since that green means "a server is
+     actually up" per the brand README — this ring is just decorative
+     motion, not a real status check, so it shouldn't borrow that color. */
+  .icon-box::after {
+    content: "";
+    position: absolute;
+    inset: -1.5px;
+    border-radius: 17.5px;
+    border: 1.5px solid var(--violet);
+    opacity: 0;
+    animation: ping 2.6s ease-out infinite;
+  }
+
+  @keyframes ping {
+    0%   { transform: scale(1);    opacity: 0.55; }
+    70%  { transform: scale(1.25); opacity: 0; }
+    100% { transform: scale(1.25); opacity: 0; }
+  }
+
+  .icon-box img {
+    width: 38px;
+    height: 38px;
+    object-fit: contain;
+  }
+
+  /* The per-message icons defined in settings.js render as these — plain
+     line icons using the brand's ink color, sized to match the logo. */
+  .icon-box svg {
+    width: 28px;
+    height: 28px;
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 1.6;
+  }
+
+  /* ---- TEXT PANEL ------------------------------------------------------- */
+  .text-panel {
+    height: 64px;
+    max-width: 0;              /* animated open by JS, see settings.js */
+    overflow: hidden;
+    white-space: nowrap;
+    background: var(--void);
+    border-radius: 0 14px 14px 0;
+    margin-left: -14px;        /* tuck slightly under the icon box */
+    padding-left: 26px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    transition: max-width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* The "hidden" transform/duration are set by JS from settings.js's
+     transitionStyle — see TRANSITION_STYLES further down for exactly what
+     each named style does. Using one --swap-transform variable (rather
+     than separate x/y ones) means new styles can use scale(), rotate(),
+     or anything else transform supports, not just translate(). */
+  .text-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding-right: 28px;
+    opacity: 0;
+    transform: var(--swap-transform, translate(0px, 4px));
+    transition: opacity var(--swap-duration, 0.3s) ease,
+                transform var(--swap-duration, 0.3s) ease;
+  }
+
+  .text-inner.is-shown {
+    opacity: 1;
+    transform: none;
+  }
+
+  .msg-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    color: var(--violet-soft);
+  }
+
+  .msg-text {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--ink);
+    letter-spacing: 0.01em;
+  }
+</style>
+</head>
+<body>
+
+<div class="badge-wrap" id="badgeWrap">
+
+  <!-- ICON BOX
+       Sits idle showing your real logo (logo.png). If the current message
+       in settings.js has its own "image" (a real image file) or "icon"
+       (inline SVG code), this swaps to that instead while the message is
+       shown, then swaps back to the logo when the badge closes and goes
+       blank between loops. If no message defines either, the logo just
+       stays up the whole time — which is exactly what this campaign does. -->
+  <div class="icon-box" id="iconBox">
+    <img src="logo.png" alt="logo">
+  </div>
+
+  <!-- TEXT PANEL: the tag + message rotate through CONFIG.messages below -->
+  <div class="text-panel" id="textPanel">
+    <div class="text-inner" id="textInner">
+      <span class="msg-tag" id="msgTag">WEB</span>
+      <span class="msg-text" id="msgText">TheNerdyBox.com</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- Loads the CONFIG object from settings.js. Must come before the main
+     script below, since that script reads CONFIG as soon as it runs. -->
+<script src="settings.js"></script>
+
+<script>
+/* ============================================================================
+   ENGINE — you shouldn't need to touch anything below this line.
+   It just plays through whatever is in settings.js, on a loop.
+   ============================================================================ */
+
+// Push the colors from settings.js into the CSS custom properties defined
+// in :root above, so changing settings.js re-skins the whole badge.
+const root = document.documentElement.style;
+root.setProperty('--void',        CONFIG.colors.void);
+root.setProperty('--violet',      CONFIG.colors.violet);
+root.setProperty('--violet-soft', CONFIG.colors.violetSoft);
+root.setProperty('--ink',         CONFIG.colors.ink);
+root.setProperty('--mute',        CONFIG.colors.mute);
+
+/* ============================================================================
+   TRANSITION STYLE — how each new message's text arrives when swapping
+   between slides (this is only about the text swap while the badge stays
+   open — not the badge's own slide-in/out at the start and end).
+
+   Set from settings.js's "transitionStyle". All available options:
+     "fade"        -> text barely moves, just crossfades in place (default)
+     "slide"       -> text slides in sideways (from the right) while it fades
+     "slide-up"    -> text slides in from below while it fades
+     "slide-down"  -> text slides in from above while it fades
+     "zoom"        -> text scales up from slightly smaller while it fades
+     "none"        -> instant cut, no animation at all
+     "random"      -> picks a different one of the above at random every
+                      single time a slide changes (re-rolled on every swap,
+                      not just once when the page loads)
+
+   To switch, edit "transitionStyle" in settings.js — nothing here needs
+   to change. To fine-tune the distance/scale a style uses, edit the
+   values in TRANSITION_STYLES below.
+   ============================================================================ */
+const TRANSITION_STYLES = {
+  'fade':       { transform: 'translate(0px, 4px)' },
+  'slide':      { transform: 'translate(22px, 0px)' },
+  'slide-up':   { transform: 'translate(0px, 22px)' },
+  'slide-down': { transform: 'translate(0px, -22px)' },
+  'zoom':       { transform: 'scale(0.82)' },
+  'none':       { transform: 'translate(0px, 0px)', instant: true },
+};
+// "random" isn't a real style itself — it's resolved to one of these names,
+// freshly, every time applyTransitionStyle() runs.
+const RANDOMIZABLE_STYLES = Object.keys(TRANSITION_STYLES);
+
+// Reads settings.js's transitionStyle and pushes the matching CSS variables.
+// Called once per slide change (see setMessage below) so "random" can pick
+// a fresh style every time, not just once for the whole session.
+function applyTransitionStyle() {
+  let key = CONFIG.transitionStyle;
+  if (key === 'random') {
+    key = RANDOMIZABLE_STYLES[Math.floor(Math.random() * RANDOMIZABLE_STYLES.length)];
+  }
+  const style = TRANSITION_STYLES[key] || TRANSITION_STYLES.fade;
+  root.setProperty('--swap-transform', style.transform);
+  root.setProperty('--swap-duration', style.instant ? '0s' : '0.3s');
+}
+
+const wrap      = document.getElementById('badgeWrap');
+const iconBox   = document.getElementById('iconBox');
+const textPanel = document.getElementById('textPanel');
+const textInner = document.getElementById('textInner');
+const msgTag    = document.getElementById('msgTag');
+const msgText   = document.getElementById('msgText');
+
+const LOGO_MARKUP = '<img src="logo.png" alt="logo">';
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ---- PLAINTEXT SLIDE PARSING -----------------------------------------
+// settings.js can define slides two ways: the structured "messages" array
+// (supports per-slide icon/image), or the simpler "messagesText" plain
+// block (tag on one line, text on the next, a blank line between slides —
+// no icons/images possible this way, just quick text editing). If both
+// are present, messagesText wins, since it's the one meant for casual
+// hand-editing.
+function parseSlidesText(text) {
+  return text
+    .trim()
+    .split(/\n\s*\n/)              // blank line = new slide
+    .map((block) => {
+      const lines = block.trim().split('\n').map((l) => l.trim());
+      return { tag: lines[0] || '', text: lines.slice(1).join(' ') };
+    })
+    .filter((m) => m.tag || m.text);
+}
+
+const SLIDES = (CONFIG.messagesText && CONFIG.messagesText.trim())
+  ? parseSlidesText(CONFIG.messagesText)
+  : CONFIG.messages;
+
+// Swaps the icon box between the logo and a message's own icon/image.
+// Checks in this order: message.image (a real image file) first, then
+// message.icon (inline SVG code), then falls back to the logo if a
+// message has neither. This is the ONLY thing that decides whether a
+// campaign looks "static logo" or "changes per slide" — nothing else
+// in this file needs to change between those two styles.
+function setIcon(message) {
+  if (message && message.image) {
+    iconBox.innerHTML = '<img src="' + message.image + '" alt="">';
+  } else if (message && message.icon) {
+    iconBox.innerHTML = '<svg viewBox="0 0 24 24">' + message.icon + '</svg>';
+  } else {
+    iconBox.innerHTML = LOGO_MARKUP;
+  }
+}
+
+function setMessage(message) {
+  applyTransitionStyle(); // re-resolve here so "random" re-rolls every swap
+  msgTag.textContent = message.tag;
+  msgText.textContent = message.text;
+  setIcon(message);
+  // Measure how wide this specific message needs to be, then use that
+  // as the max-width target so the panel opens to the right size.
+  textPanel.style.maxWidth = textInner.scrollWidth + 46 + 'px';
+}
+
+async function runCycle() {
+  const t = CONFIG.timing;
+
+  // 1. Reset to the logo (idle state), load the first message's text
+  //    (while still hidden), and slide in.
+  setMessage(SLIDES[0]); // loads text + icon for message 1 (still hidden)
+  setIcon(null);          // ...then override the icon back to idle/logo
+  textPanel.style.maxWidth = '0px'; // stay closed during slide-in
+  wrap.classList.add('is-visible');
+  await sleep(t.holdBeforeOpening + 700); // 700ms matches the slide-in transition
+
+  // 2. Re-open the text panel to the first message's actual width, swap
+  //    its icon back in, and fade the text in. (setMessage does all
+  //    three — text, icon, and width — in one call; setIcon alone would
+  //    leave maxWidth stuck at 0 from step 1, and the text would fade in
+  //    invisibly inside a zero-width box.)
+  setMessage(SLIDES[0]);
+  await sleep(50);
+  textInner.classList.add('is-shown');
+  await sleep(t.textOpenDuration + t.perMessageHold);
+
+  // 3. Step through the remaining messages — icon and text swap together.
+  for (let i = 1; i < SLIDES.length; i++) {
+    textInner.classList.remove('is-shown');
+    await sleep(t.swapFade);
+    setMessage(SLIDES[i]);
+    textInner.classList.add('is-shown');
+    await sleep(t.perMessageHold);
+  }
+
+  // 4. Close the text panel, reset to the logo, then slide the whole
+  //    badge back off-screen and go blank before the next loop.
+  textInner.classList.remove('is-shown');
+  textPanel.style.maxWidth = '0px';
+  setIcon(null);
+  await sleep(t.holdBeforeSlideOut);
+  wrap.classList.remove('is-visible');
+  await sleep(700 + t.slideOutPause); // wait out the slide-out + gap before looping
+}
+
+async function loopForever() {
+  while (true) {
+    await runCycle();
+  }
+}
+
+loopForever();
+</script>
+
+</body>
+</html>

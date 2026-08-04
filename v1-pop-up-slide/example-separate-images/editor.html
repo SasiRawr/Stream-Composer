@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pop-Up Slide Editor</title>
+
+<!--
+  ============================================================================
+  POP-UP SLIDE EDITOR — a small local tool for editing settings.js with
+  forms instead of code. Open this file directly in a desktop browser
+  (Chrome or Edge work best) — NOT inside OBS, this is an editing tool,
+  not part of the overlay itself.
+
+  WHAT IT DOES:
+    - Reads the settings.js sitting next to it and fills in a form.
+    - Lets you add/remove/reorder slides, change text, pick an icon,
+      change the transition style, and change the two timing values,
+      all without touching code.
+    - "Save" writes out a new settings.js.
+
+  ONE THING WORTH KNOWING UP FRONT:
+    A webpage cannot silently overwrite a file on your computer — no
+    browser allows that, for security reasons, regardless of how the page
+    is built. This editor does the best available thing instead:
+      - In Chrome or Edge on desktop, "Save" opens a save dialog already
+        pointed at your existing settings.js, so approving it really is
+        a one-click overwrite.
+      - In any other browser (or if that dialog isn't available), "Save"
+        downloads a new settings.js instead — move it into your popup
+        folder afterward, replacing the old one.
+    Either way you'll see which one happened after you click Save.
+
+  ABOUT THE PLATFORM ICONS IN THE DROPDOWN:
+    These are generic placeholder icons (a colored circle with initials),
+    not the real Twitch/YouTube/TikTok/etc. logos — those are trademarked,
+    and this tool won't redraw them. If you want the real logos, download
+    the official brand/press assets from each platform's own site and use
+    "Custom image file" instead, pointing at that file. Since every icon
+    (placeholder or real) renders at the same fixed size as your actual
+    logo, swapping one in later won't break any sizing.
+  ============================================================================
+-->
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=JetBrains+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a12;
+    color: #f2f1f9;
+    font-family: 'Inter', sans-serif;
+    padding: 32px;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    color: #918eae;
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+
+  .panel {
+    background: #14151c;
+    border: 1px solid rgba(124, 92, 255, 0.25);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .panel h2 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: #a594ff;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .field-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  label {
+    font-size: 12px;
+    color: #918eae;
+  }
+
+  input[type="text"], input[type="number"], select {
+    background: #0a0a12;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    color: #f2f1f9;
+    padding: 9px 10px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: #7c5cff;
+  }
+
+  .slide-card {
+    background: #0a0a12;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+
+  .slide-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .slide-card-head span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #918eae;
+  }
+
+  .remove-btn {
+    background: none;
+    border: none;
+    color: #918eae;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 2px 8px;
+    border-radius: 6px;
+  }
+  .remove-btn:hover { color: #ff6b4a; background: rgba(255,107,74,0.1); }
+
+  .icon-preview {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1c1d28;
+    flex-shrink: 0;
+  }
+  .icon-preview svg { width: 20px; height: 20px; }
+  .icon-preview img { width: 20px; height: 20px; object-fit: contain; }
+
+  .icon-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 8px;
+  }
+  .icon-row select { flex: 1; }
+
+  button.primary, button.secondary {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 10px 16px;
+    cursor: pointer;
+    border: none;
+  }
+
+  button.primary {
+    background: #7c5cff;
+    color: #fff;
+  }
+  button.primary:hover { background: #6a4ce0; }
+
+  button.secondary {
+    background: transparent;
+    border: 1px solid rgba(124,92,255,0.4);
+    color: #a594ff;
+  }
+  button.secondary:hover { background: rgba(124,92,255,0.1); }
+
+  .actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  #status {
+    margin-top: 14px;
+    font-size: 13px;
+    color: #918eae;
+    line-height: 1.5;
+  }
+  #status.ok { color: #35e6c4; }
+  #status.err { color: #ff6b4a; }
+
+  .hint {
+    font-size: 12px;
+    color: #918eae;
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<h1>Pop-Up Slide Editor</h1>
+<div class="subtitle" id="subtitle">Loading settings.js…</div>
+
+<div class="panel">
+  <h2>General</h2>
+  <div class="field-row">
+    <div class="field">
+      <label for="transitionStyle">Text transition style</label>
+      <select id="transitionStyle">
+        <option value="fade">fade</option>
+        <option value="slide">slide</option>
+        <option value="slide-up">slide-up</option>
+        <option value="slide-down">slide-down</option>
+        <option value="zoom">zoom</option>
+        <option value="none">none (instant cut)</option>
+        <option value="random">random (different every slide)</option>
+      </select>
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label for="perSlideSeconds">Seconds each slide stays on screen</label>
+      <input type="number" id="perSlideSeconds" step="0.1" min="0.5">
+    </div>
+    <div class="field">
+      <label for="pauseSeconds">Seconds paused (blank) before it repeats</label>
+      <input type="number" id="pauseSeconds" step="0.1" min="0">
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Slides</h2>
+  <div id="slideList"></div>
+  <button class="secondary" id="addSlideBtn" type="button">+ Add slide</button>
+</div>
+
+<div class="actions">
+  <button class="primary" id="saveBtn" type="button">Save settings.js</button>
+</div>
+<div id="status"></div>
+
+<script src="settings.js"></script>
+<script>
+/* ============================================================================
+   GENERIC PLACEHOLDER PLATFORM ICONS
+   ============================================================================
+   Plain colored circles with initials — NOT the real logos (see the notice
+   at the top of this file for why). Each entry's "svg" is exactly what
+   gets written into settings.js as a message's "icon" field if you pick
+   that platform. Swap to "Custom image file" instead if you have the real
+   official logo file to use.
+   ========================================================================= */
+const PLATFORM_ICONS = {
+  twitch:    { label: 'Twitch (placeholder)',    initials: 'TW', color: '#9146FF' },
+  youtube:   { label: 'YouTube (placeholder)',   initials: 'YT', color: '#FF0000' },
+  tiktok:    { label: 'TikTok (placeholder)',    initials: 'TT', color: '#111111' },
+  kick:      { label: 'Kick (placeholder)',      initials: 'KI', color: '#53FC18' },
+  trovo:     { label: 'Trovo (placeholder)',     initials: 'TR', color: '#1FCF6C' },
+  x:         { label: 'X / Twitter (placeholder)', initials: 'X', color: '#000000' },
+  discord:   { label: 'Discord (placeholder)',   initials: 'DC', color: '#5865F2' },
+  steam:     { label: 'Steam (placeholder)',     initials: 'ST', color: '#1B2838' },
+  instagram: { label: 'Instagram (placeholder)', initials: 'IG', color: '#C13584' },
+  facebook:  { label: 'Facebook (placeholder)',  initials: 'FB', color: '#1877F2' },
+};
+
+function platformIconSvg(key) {
+  const p = PLATFORM_ICONS[key];
+  if (!p) return '';
+  return '<circle cx="12" cy="12" r="11" fill="' + p.color + '"/>' +
+         '<text x="12" y="15.5" font-size="8" font-weight="700" text-anchor="middle" ' +
+         'fill="#ffffff" font-family="Arial, sans-serif">' + p.initials + '</text>';
+}
+
+// Reverse-lookup: given an icon svg string already in settings.js, figure
+// out which platform (if any) it matches, so re-opening the editor shows
+// the right dropdown selection instead of losing track of it.
+function findPlatformByIcon(iconSvg) {
+  for (const key in PLATFORM_ICONS) {
+    if (platformIconSvg(key) === iconSvg) return key;
+  }
+  return null;
+}
+
+// ---- Load existing slides from CONFIG (settings.js), plaintext or array ----
+function parseSlidesText(text) {
+  return text.trim().split(/\n\s*\n/).map((block) => {
+    const lines = block.trim().split('\n').map((l) => l.trim());
+    return { tag: lines[0] || '', text: lines.slice(1).join(' ') };
+  }).filter((m) => m.tag || m.text);
+}
+
+let slides = [];       // each: { tag, text, iconMode: 'none'|'platform'|'custom'|'keep', platformKey, customPath, rawIcon }
+let loadedColors = null;
+let usedPlaintextMethod = false;
+
+if (typeof CONFIG !== 'undefined') {
+  loadedColors = CONFIG.colors || null;
+
+  let rawMessages;
+  if (CONFIG.messagesText && CONFIG.messagesText.trim()) {
+    rawMessages = parseSlidesText(CONFIG.messagesText);
+    usedPlaintextMethod = true;
+  } else {
+    rawMessages = CONFIG.messages || [];
+  }
+
+  slides = rawMessages.map((m) => {
+    if (m.image) {
+      return { tag: m.tag, text: m.text, iconMode: 'custom', customPath: m.image };
+    }
+    if (m.icon) {
+      const platformKey = findPlatformByIcon(m.icon);
+      if (platformKey) return { tag: m.tag, text: m.text, iconMode: 'platform', platformKey: platformKey };
+      return { tag: m.tag, text: m.text, iconMode: 'keep', rawIcon: m.icon };
+    }
+    return { tag: m.tag, text: m.text, iconMode: 'none' };
+  });
+
+  document.getElementById('subtitle').textContent =
+    'Loaded ' + slides.length + ' slide(s) from settings.js' +
+    (usedPlaintextMethod ? ' (plaintext method — icons will switch this file to the structured method on save)' : '.');
+
+  document.getElementById('transitionStyle').value = CONFIG.transitionStyle || 'fade';
+  document.getElementById('perSlideSeconds').value = ((CONFIG.timing && CONFIG.timing.perMessageHold) || 2600) / 1000;
+  document.getElementById('pauseSeconds').value = ((CONFIG.timing && CONFIG.timing.slideOutPause) || 500) / 1000;
+} else {
+  document.getElementById('subtitle').textContent =
+    'No settings.js found next to this file — starting from a blank slide.';
+  slides = [{ tag: '', text: '', iconMode: 'none' }];
+  document.getElementById('transitionStyle').value = 'fade';
+  document.getElementById('perSlideSeconds').value = 2.6;
+  document.getElementById('pauseSeconds').value = 0.5;
+}
+
+// ---- Rendering ----------------------------------------------------------
+function iconPreviewHTML(slide) {
+  if (slide.iconMode === 'platform' && slide.platformKey) {
+    return '<div class="icon-preview"><svg viewBox="0 0 24 24">' + platformIconSvg(slide.platformKey) + '</svg></div>';
+  }
+  if (slide.iconMode === 'custom' && slide.customPath) {
+    return '<div class="icon-preview"><img src="' + slide.customPath + '" alt="" onerror="this.style.display=\'none\'"></div>';
+  }
+  if (slide.iconMode === 'keep') {
+    return '<div class="icon-preview"><svg viewBox="0 0 24 24">' + slide.rawIcon + '</svg></div>';
+  }
+  return '<div class="icon-preview"><img src="logo.png" alt="" onerror="this.style.display=\'none\'"></div>';
+}
+
+function renderSlides() {
+  const list = document.getElementById('slideList');
+  list.innerHTML = '';
+  slides.forEach((slide, i) => {
+    const card = document.createElement('div');
+    card.className = 'slide-card';
+
+    const iconOptions = ['<option value="none">No icon (show logo)</option>'];
+    for (const key in PLATFORM_ICONS) {
+      iconOptions.push('<option value="platform:' + key + '">' + PLATFORM_ICONS[key].label + '</option>');
+    }
+    iconOptions.push('<option value="custom">Custom image file…</option>');
+    if (slide.iconMode === 'keep') {
+      iconOptions.push('<option value="keep">Existing custom icon (kept as-is)</option>');
+    }
+
+    let selectedValue = 'none';
+    if (slide.iconMode === 'platform') selectedValue = 'platform:' + slide.platformKey;
+    else if (slide.iconMode === 'custom') selectedValue = 'custom';
+    else if (slide.iconMode === 'keep') selectedValue = 'keep';
+
+    card.innerHTML =
+      '<div class="slide-card-head"><span>SLIDE ' + (i + 1) + '</span>' +
+      '<button class="remove-btn" data-i="' + i + '" data-action="remove">Remove</button></div>' +
+      '<div class="field-row">' +
+        '<div class="field"><label>Tag (short caps label)</label>' +
+        '<input type="text" data-i="' + i + '" data-field="tag" value="' + escapeHtml(slide.tag) + '"></div>' +
+      '</div>' +
+      '<div class="field-row">' +
+        '<div class="field"><label>Slide text</label>' +
+        '<input type="text" data-i="' + i + '" data-field="text" value="' + escapeHtml(slide.text) + '"></div>' +
+      '</div>' +
+      '<div class="icon-row">' +
+        iconPreviewHTML(slide) +
+        '<select data-i="' + i + '" data-field="iconSelect">' + iconOptions.join('') + '</select>' +
+      '</div>' +
+      (slide.iconMode === 'custom'
+        ? '<div class="field-row" style="margin-top:8px;"><div class="field">' +
+          '<label>Image file name (must sit next to settings.js)</label>' +
+          '<input type="text" data-i="' + i + '" data-field="customPath" value="' + escapeHtml(slide.customPath || '') + '"></div></div>'
+        : '');
+
+    list.appendChild(card);
+
+    card.querySelector('[data-field="iconSelect"]').value = selectedValue;
+  });
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.getElementById('slideList').addEventListener('input', (e) => {
+  const i = e.target.getAttribute('data-i');
+  const field = e.target.getAttribute('data-field');
+  if (i === null) return;
+  const idx = parseInt(i, 10);
+  if (field === 'tag') slides[idx].tag = e.target.value;
+  if (field === 'text') slides[idx].text = e.target.value;
+  if (field === 'customPath') slides[idx].customPath = e.target.value;
+});
+
+document.getElementById('slideList').addEventListener('change', (e) => {
+  const i = e.target.getAttribute('data-i');
+  const field = e.target.getAttribute('data-field');
+  if (i === null) return;
+  const idx = parseInt(i, 10);
+  if (field === 'iconSelect') {
+    const val = e.target.value;
+    if (val === 'none') {
+      slides[idx].iconMode = 'none';
+    } else if (val === 'custom') {
+      slides[idx].iconMode = 'custom';
+      slides[idx].customPath = slides[idx].customPath || '';
+    } else if (val === 'keep') {
+      slides[idx].iconMode = 'keep';
+    } else if (val.indexOf('platform:') === 0) {
+      slides[idx].iconMode = 'platform';
+      slides[idx].platformKey = val.slice('platform:'.length);
+    }
+    renderSlides();
+  }
+});
+
+document.getElementById('slideList').addEventListener('click', (e) => {
+  if (e.target.getAttribute('data-action') === 'remove') {
+    const idx = parseInt(e.target.getAttribute('data-i'), 10);
+    slides.splice(idx, 1);
+    renderSlides();
+  }
+});
+
+document.getElementById('addSlideBtn').addEventListener('click', () => {
+  slides.push({ tag: '', text: '', iconMode: 'none' });
+  renderSlides();
+});
+
+renderSlides();
+
+// ---- Building the new settings.js text ----------------------------------
+function buildSettingsFileText() {
+  const transitionStyle = document.getElementById('transitionStyle').value;
+  const perSlideMs = Math.round(parseFloat(document.getElementById('perSlideSeconds').value) * 1000);
+  const pauseMs = Math.round(parseFloat(document.getElementById('pauseSeconds').value) * 1000);
+
+  const messagesCode = slides.map((s) => {
+    let extra = '';
+    if (s.iconMode === 'platform') {
+      extra = ', icon: \'' + platformIconSvg(s.platformKey).replace(/'/g, "\\'") + '\'';
+    } else if (s.iconMode === 'custom' && s.customPath) {
+      extra = ', image: ' + JSON.stringify(s.customPath);
+    } else if (s.iconMode === 'keep' && s.rawIcon) {
+      extra = ', icon: \'' + s.rawIcon.replace(/'/g, "\\'") + '\'';
+    }
+    return '    { tag: ' + JSON.stringify(s.tag) + ', text: ' + JSON.stringify(s.text) + extra + ' }';
+  }).join(',\n');
+
+  const colors = loadedColors || {
+    void: '#0a0a12', violet: '#7c5cff', violetSoft: '#a594ff', ink: '#f2f1f9', mute: '#918eae'
+  };
+
+  return (
+`/* ============================================================================
+   OVERLAY SETTINGS
+   ============================================================================
+   Generated by the Pop-Up Slide Editor (editor.html). This file uses the
+   structured "messages" array method (rather than plaintext) because at
+   least one slide here has its own icon/image — see
+   stream-popup-overlay.html for how both methods work.
+
+   Re-open editor.html any time to make further changes with the form
+   instead of hand-editing this file.
+   ========================================================================= */
+
+const CONFIG = {
+
+  messages: [
+${messagesCode}
+  ],
+
+  transitionStyle: ${JSON.stringify(transitionStyle)},   // fade / slide / slide-up / slide-down / zoom / none / random
+
+  timing: {
+    holdBeforeOpening:  350,
+    textOpenDuration:    450,
+    perMessageHold:      ${perSlideMs},
+    swapFade:            260,
+    holdBeforeSlideOut:  400,
+    slideOutPause:       ${pauseMs},
+  },
+
+  colors: {
+    void:        ${JSON.stringify(colors.void)},
+    violet:      ${JSON.stringify(colors.violet)},
+    violetSoft:  ${JSON.stringify(colors.violetSoft)},
+    ink:         ${JSON.stringify(colors.ink)},
+    mute:        ${JSON.stringify(colors.mute)},
+  }
+
+};
+`);
+}
+
+// ---- Saving: try a direct overwrite dialog, fall back to download --------
+async function saveFile() {
+  const status = document.getElementById('status');
+  const text = buildSettingsFileText();
+
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'settings.js',
+        types: [{ description: 'JavaScript', accept: { 'text/javascript': ['.js'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      status.className = 'ok';
+      status.textContent = 'Saved — pick your existing settings.js in the dialog to overwrite it directly.';
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        status.className = '';
+        status.textContent = 'Save cancelled.';
+        return;
+      }
+      // Fall through to download if the picker failed for any other reason.
+    }
+  }
+
+  const blob = new Blob([text], { type: 'text/javascript' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'settings.js';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  status.className = 'ok';
+  status.textContent = 'Downloaded settings.js — move it into your popup folder, replacing the old one.';
+}
+
+document.getElementById('saveBtn').addEventListener('click', saveFile);
+</script>
+
+</body>
+</html>
