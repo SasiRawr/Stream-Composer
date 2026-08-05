@@ -14,6 +14,7 @@
 
 import { Canvas, Rect, FabricImage } from 'fabric';
 import { buildSceneHtml, collectAssetCopies } from './bake.js';
+import { applyChromaKey } from './chromakey.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -364,6 +365,7 @@ function renderImageProperties(item, body) {
       <div class="hint">${escapeHtml(item.props.sourcePath)}</div>
     </div>
     <button class="secondary block" id="pf-replaceImage" type="button">Replace image…</button>
+    <button class="secondary block" id="pf-chromaKey" type="button">Chroma Key…</button>
   `;
   document.getElementById('pf-replaceImage').addEventListener('click', async () => {
     const path = await invoke('pick_image_file');
@@ -372,6 +374,136 @@ function renderImageProperties(item, body) {
     await refreshFabricObjectForItem(item.id);
     renderPropertiesPanel();
   });
+  document.getElementById('pf-chromaKey').addEventListener('click', () => openChromaKeyDialog(item));
+}
+
+// ---- CHROMA KEY DIALOG ------------------------------------------------------
+// See chromakey.js for the actual pixel algorithm. This just wires up the
+// dialog: load the image at its real (full) resolution, let the user click
+// to sample a key color, live-preview the result as sliders move, and on
+// Apply write a new "<id>-keyed.png" file rather than touching the
+// original — so Cancel/redo is never destructive.
+let ckItem = null;
+let ckOriginalImageData = null; // the untouched original pixels, sampled from
+let ckKeyColor = { r: 0, g: 255, b: 0 };
+
+function ckCurrentOptions() {
+  return {
+    keyColor: ckKeyColor,
+    similarity: parseFloat(document.getElementById('ckSimilarity').value),
+    feather: parseFloat(document.getElementById('ckFeather').value),
+    spillSuppression: parseFloat(document.getElementById('ckSpill').value),
+  };
+}
+
+function ckUpdateSliderLabels() {
+  document.getElementById('ckSimilarityValue').textContent = document.getElementById('ckSimilarity').value;
+  document.getElementById('ckFeatherValue').textContent = document.getElementById('ckFeather').value;
+  document.getElementById('ckSpillValue').textContent = document.getElementById('ckSpill').value;
+}
+
+function ckUpdateSwatch() {
+  const swatch = document.getElementById('ckKeyColorSwatch');
+  swatch.style.background = `rgb(${ckKeyColor.r}, ${ckKeyColor.g}, ${ckKeyColor.b})`;
+}
+
+function ckRedrawPreview() {
+  const canvas = document.getElementById('ckPreviewCanvas');
+  const ctx = canvas.getContext('2d');
+  const result = applyChromaKey(ckOriginalImageData, ckCurrentOptions());
+  ctx.putImageData(new ImageData(result.data, result.width, result.height), 0, 0);
+}
+
+async function openChromaKeyDialog(item) {
+  ckItem = item;
+  const dialog = document.getElementById('chromaKeyDialog');
+  const canvas = document.getElementById('ckPreviewCanvas');
+
+  let base64, ext;
+  try {
+    base64 = await invoke('read_binary_file_base64', { path: item.props.sourcePath });
+    ext = (item.props.sourcePath.split('.').pop() || 'png').toLowerCase();
+  } catch (err) {
+    setStatus('Couldn\'t load image for chroma key: ' + err, 'err');
+    return;
+  }
+  const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  const img = new Image();
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = `data:${mime};base64,${base64}`;
+  });
+
+  // Canvas's actual pixel buffer matches the image 1:1 (CSS shrinks it for
+  // display — see .ck-preview-wrap/#ckPreviewCanvas in styles.css) so
+  // eyedropper clicks and the final Apply both work in real image pixels,
+  // no scale-factor math needed here.
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  ckOriginalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  // Default key color: sample the top-left corner, a reasonable guess for
+  // "probably background" until the user picks for real.
+  const d = ckOriginalImageData.data;
+  ckKeyColor = { r: d[0], g: d[1], b: d[2] };
+  ckUpdateSwatch();
+  ckUpdateSliderLabels();
+  ckRedrawPreview();
+
+  dialog.showModal();
+}
+
+function wireChromaKeyDialog() {
+  const canvas = document.getElementById('ckPreviewCanvas');
+  const dialog = document.getElementById('chromaKeyDialog');
+
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    // Map the click's on-screen (CSS-scaled) position back to real pixel
+    // coordinates in the canvas's own buffer.
+    const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
+    const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
+    const i = (y * ckOriginalImageData.width + x) * 4;
+    ckKeyColor = { r: ckOriginalImageData.data[i], g: ckOriginalImageData.data[i + 1], b: ckOriginalImageData.data[i + 2] };
+    ckUpdateSwatch();
+    ckRedrawPreview();
+  });
+
+  ['ckSimilarity', 'ckFeather', 'ckSpill'].forEach((id) => {
+    document.getElementById(id).addEventListener('input', () => {
+      ckUpdateSliderLabels();
+      ckRedrawPreview();
+    });
+  });
+
+  document.getElementById('ckCancelBtn').addEventListener('click', () => dialog.close());
+
+  document.getElementById('ckApplyBtn').addEventListener('click', async () => {
+    const canvas = document.getElementById('ckPreviewCanvas');
+    const outputPath = joinPath(dirname(ckItem.props.sourcePath), ckItem.id + '-keyed.png');
+    const dataUrl = canvas.toDataURL('image/png');
+    const base64Data = dataUrl.substring(dataUrl.indexOf(',') + 1);
+    try {
+      await invoke('write_binary_file', { path: outputPath, base64Data });
+    } catch (err) {
+      setStatus('Couldn\'t save chroma-keyed image: ' + err, 'err');
+      return;
+    }
+    ckItem.props.sourcePath = outputPath;
+    await refreshFabricObjectForItem(ckItem.id);
+    renderPropertiesPanel();
+    dialog.close();
+    setStatus('Chroma key applied — saved to ' + outputPath, 'ok');
+  });
+}
+
+function dirname(path) {
+  const sep = path.includes('\\') ? '\\' : '/';
+  const idx = path.lastIndexOf(sep);
+  return idx === -1 ? path : path.slice(0, idx);
 }
 
 function renderPopupSlideProperties(item, body) {
@@ -515,6 +647,7 @@ window.addEventListener('DOMContentLoaded', () => {
   };
 
   wireNewProjectDialog();
+  wireChromaKeyDialog();
   els.openProjectBtn.addEventListener('click', openProject);
   els.saveProjectBtn.addEventListener('click', saveProject);
   els.bakeBtn.addEventListener('click', bakeProject);

@@ -98,6 +98,44 @@
   </div>
 </dialog>
 
+<!--
+  Chroma-key dialog: click the preview to pick a key color (an
+  "eyedropper"), then adjust the sliders and Apply. This never touches
+  your original image file — it writes a new "<id>-keyed.png" next to it,
+  so Cancel/redo is never destructive.
+-->
+<dialog id="chromaKeyDialog" class="wide-dialog">
+  <h2>Chroma Key</h2>
+  <div class="hint">Click anywhere on the preview to pick the color to key out (e.g. click the green screen).</div>
+  <div class="ck-preview-wrap">
+    <canvas id="ckPreviewCanvas"></canvas>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label>Key color</label>
+      <div id="ckKeyColorSwatch" class="ck-swatch"></div>
+    </div>
+    <div class="field">
+      <label for="ckSimilarity">Similarity: <span id="ckSimilarityValue"></span></label>
+      <input type="range" id="ckSimilarity" min="0" max="0.6" step="0.01" value="0.15">
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label for="ckFeather">Edge feather: <span id="ckFeatherValue"></span></label>
+      <input type="range" id="ckFeather" min="0" max="0.4" step="0.01" value="0.1">
+    </div>
+    <div class="field">
+      <label for="ckSpill">Spill suppression: <span id="ckSpillValue"></span></label>
+      <input type="range" id="ckSpill" min="0" max="1" step="0.05" value="0.5">
+    </div>
+  </div>
+  <div class="actions">
+    <button class="primary" id="ckApplyBtn" type="button">Apply</button>
+    <button class="secondary" id="ckCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
 <script type="module" src="/main.js"></script>
 </body>
 </html>

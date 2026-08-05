@@ -201,9 +201,30 @@ limitation to communicate to users: works well on high-contrast/line-art
 (logos, sketches), not photographs — set that expectation in the UI
 rather than let a bad result read as a bug.
 
-These three are **researched and decided, not yet built** — they extend
-the image-editing milestone (§ build order below), they don't replace or
-block the Scene Composer work already in progress.
+**Chroma-key is now built** (2026-08-05) — `scene-composer/src/chromakey.js`
++ `chromakey.test.mjs`, wired into `image` items' properties panel as a
+"Chroma Key…" dialog (eyedropper key-color picker, similarity/feather/
+spill-suppression sliders, live preview). Implemented as plain JS pixel
+math (color distance in Cb/Cr space, not naive RGB, plus spill
+suppression on the dominant key-color channel) rather than a WebGL
+shader — the original plan called for WebGL, but for a one-shot still-
+image edit (not live video) plain pixel math is simpler, has no GL-context
+risk, and — importantly — is what actually makes the algorithm testable
+in plain Node with no browser/GPU (see the test file: known input pixel →
+known output pixel, no visual judgment required). Never touches the
+original file; writes `<item-id>-keyed.png` alongside it. **Not yet
+click-through tested by a human** — same caveat as the rest of Scene
+Composer.
+
+Masking (MobileSAM), background removal (BiRefNet_lite, §3), and
+vectorization (VTracer) are still **researched and decided, not yet
+built** — deliberately sequenced after chroma-key specifically because
+they need real visual judgment to verify (an ML model's output "looks
+right" or it doesn't) in a way chroma-key's pure math doesn't. Build
+these once Harvey has run Scene Composer for real and Playwright MCP
+(connected 2026-08-04) is available in a live session to actually
+screenshot and iterate, rather than shipping three visually-unverifiable
+features back to back.
 
 ---
 
