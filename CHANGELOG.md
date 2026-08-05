@@ -4,6 +4,16 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v0.6.0 — 2026-08-05 (Scene Composer)
+
+### Added
+- **Blur** on `image` items — a radius slider with a live preview.
+  Useful for softening an image, or for obscuring detail you don't want
+  visible on stream. Handles transparency correctly (no dark fringing
+  around transparent edges).
+
+Popup Slide Editor unchanged in this release (still v0.1.0).
+
 ## v0.5.0 — 2026-08-05 (Scene Composer)
 
 ### Added

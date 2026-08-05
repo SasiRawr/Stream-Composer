@@ -245,10 +245,22 @@ one confirming the circular-vs-square distinction directly. Designed to
 pair with chroma-key output — a "sticker" cutout look needs real
 transparency to trace an edge against. Writes `<item-id>-outlined.png`.
 
+**Blur is now built too** (2026-08-05, v0.6.0) —
+`scene-composer/src/blur.js` + `blur.test.mjs`. A separable box blur
+(horizontal pass then vertical pass, standard "separable filter"
+technique) done correctly against transparency: RGB is premultiplied by
+alpha before blurring and un-premultiplied after, which avoids the
+classic dark-fringing bug a naive blur produces near transparent edges
+(a pixel test specifically checks for this — an opaque red region next
+to transparent black pixels stays fully red after blurring, not
+darkened). 4/4 unit tests. Useful both for stylistic softening and for
+obscuring visible detail (an account name, a chat overlay) a streamer
+doesn't want readable on screen. Writes `<item-id>-blurred.png`.
+
 Masking (MobileSAM) and background removal (BiRefNet_lite, §3) are still
 **researched and decided, not yet built** — deliberately sequenced after
-the deterministic features (chroma-key, crop, pad, color adjust, outline)
-specifically because
+the deterministic features (chroma-key, crop, pad, color adjust, outline,
+blur) specifically because
 they need real visual judgment to verify (an ML model's output "looks
 right" or it doesn't) in a way pure math doesn't. Vectorization (VTracer)
 is lower priority than these two per Haiku's follow-up research

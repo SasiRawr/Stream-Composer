@@ -18,6 +18,7 @@ import { applyChromaKey } from './chromakey.js';
 import { cropImageData, padImageData } from './croppad.js';
 import { applyColorAdjustments } from './coloradjust.js';
 import { applyOutline } from './outline.js';
+import { applyBlur } from './blur.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -373,6 +374,7 @@ function renderImageProperties(item, body) {
     <button class="secondary block" id="pf-pad" type="button">Pad…</button>
     <button class="secondary block" id="pf-colorAdjust" type="button">Color Adjust…</button>
     <button class="secondary block" id="pf-outline" type="button">Outline…</button>
+    <button class="secondary block" id="pf-blur" type="button">Blur…</button>
   `;
   document.getElementById('pf-replaceImage').addEventListener('click', async () => {
     const path = await invoke('pick_image_file');
@@ -385,6 +387,7 @@ function renderImageProperties(item, body) {
   document.getElementById('pf-crop').addEventListener('click', () => openCropDialog(item));
   document.getElementById('pf-colorAdjust').addEventListener('click', () => openColorAdjustDialog(item));
   document.getElementById('pf-outline').addEventListener('click', () => openOutlineDialog(item));
+  document.getElementById('pf-blur').addEventListener('click', () => openBlurDialog(item));
   document.getElementById('pf-pad').addEventListener('click', () => openPadDialog(item));
 }
 
@@ -830,6 +833,60 @@ function wireOutlineDialog() {
   });
 }
 
+// ---- BLUR DIALOG ---------------------------------------------------------
+let blItem = null;
+let blOriginalImageData = null;
+
+function blRedrawPreview() {
+  const canvas = document.getElementById('blPreviewCanvas');
+  const ctx = canvas.getContext('2d');
+  const radius = parseFloat(document.getElementById('blRadius').value);
+  const result = applyBlur(blOriginalImageData, { radius });
+  ctx.putImageData(new ImageData(result.data, result.width, result.height), 0, 0);
+}
+
+async function openBlurDialog(item) {
+  blItem = item;
+  try {
+    blOriginalImageData = await loadItemImageData(item);
+  } catch (err) {
+    setStatus('Couldn\'t load image for blur: ' + err, 'err');
+    return;
+  }
+
+  const canvas = document.getElementById('blPreviewCanvas');
+  canvas.width = blOriginalImageData.width;
+  canvas.height = blOriginalImageData.height;
+
+  document.getElementById('blRadius').value = 4;
+  document.getElementById('blRadiusValue').textContent = '4';
+  blRedrawPreview();
+
+  document.getElementById('blurDialog').showModal();
+}
+
+function wireBlurDialog() {
+  document.getElementById('blRadius').addEventListener('input', () => {
+    document.getElementById('blRadiusValue').textContent = document.getElementById('blRadius').value;
+    blRedrawPreview();
+  });
+
+  document.getElementById('blCancelBtn').addEventListener('click', () => document.getElementById('blurDialog').close());
+
+  document.getElementById('blApplyBtn').addEventListener('click', async () => {
+    const radius = parseFloat(document.getElementById('blRadius').value);
+    const result = applyBlur(blOriginalImageData, { radius });
+    try {
+      const outputPath = await saveProcessedImageForItem(blItem, result, 'blurred');
+      setStatus('Blur applied — saved to ' + outputPath, 'ok');
+    } catch (err) {
+      setStatus('Couldn\'t save blurred image: ' + err, 'err');
+      return;
+    }
+    document.getElementById('blurDialog').close();
+  });
+}
+
 function renderPopupSlideProperties(item, body) {
   const p = item.props;
   body.innerHTML = `
@@ -976,6 +1033,7 @@ window.addEventListener('DOMContentLoaded', () => {
   wirePadDialog();
   wireColorAdjustDialog();
   wireOutlineDialog();
+  wireBlurDialog();
   els.openProjectBtn.addEventListener('click', openProject);
   els.saveProjectBtn.addEventListener('click', saveProject);
   els.bakeBtn.addEventListener('click', bakeProject);
