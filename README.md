@@ -3,9 +3,11 @@
 Free, local tools for building and editing stream overlays — no
 Photoshop, GIMP, or paywalled online editor required.
 
+**[Download the latest release](https://github.com/SasiRawr/Stream-Composer/releases/latest)** — see [CHANGELOG.md](CHANGELOG.md) for what's new in each version.
+
 ## What's in this repo
 
-### `app/`
+### `app/` — Popup Slide Editor
 
 A desktop app (Windows, Tauri) for building and editing the classic
 "popup slide" overlay — a small animated badge that cycles through
@@ -13,12 +15,13 @@ promotional messages on a loop, used as an OBS Browser Source. Open a
 project folder, edit slides/transition/timing through a real form, and
 save changes straight back to disk.
 
-### `scene-composer/`
+### `scene-composer/` — Scene Composer
 
 A desktop app (Windows, Tauri) for composing a whole stream layout on a
 canvas sized to your real stream resolution — drag, resize, and rotate
 items (a webcam positioning frame, images, popup-slide badges), then bake
-the arrangement into a single OBS Browser Source.
+the arrangement into a single OBS Browser Source. Includes chroma-key
+(green-screen removal) for image items.
 
 ### `v1-pop-up-slide/`
 
