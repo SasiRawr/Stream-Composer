@@ -17,6 +17,7 @@ import { buildSceneHtml, collectAssetCopies } from './bake.js';
 import { applyChromaKey } from './chromakey.js';
 import { cropImageData, padImageData } from './croppad.js';
 import { applyColorAdjustments } from './coloradjust.js';
+import { applyOutline } from './outline.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -371,6 +372,7 @@ function renderImageProperties(item, body) {
     <button class="secondary block" id="pf-crop" type="button">Crop…</button>
     <button class="secondary block" id="pf-pad" type="button">Pad…</button>
     <button class="secondary block" id="pf-colorAdjust" type="button">Color Adjust…</button>
+    <button class="secondary block" id="pf-outline" type="button">Outline…</button>
   `;
   document.getElementById('pf-replaceImage').addEventListener('click', async () => {
     const path = await invoke('pick_image_file');
@@ -382,6 +384,7 @@ function renderImageProperties(item, body) {
   document.getElementById('pf-chromaKey').addEventListener('click', () => openChromaKeyDialog(item));
   document.getElementById('pf-crop').addEventListener('click', () => openCropDialog(item));
   document.getElementById('pf-colorAdjust').addEventListener('click', () => openColorAdjustDialog(item));
+  document.getElementById('pf-outline').addEventListener('click', () => openOutlineDialog(item));
   document.getElementById('pf-pad').addEventListener('click', () => openPadDialog(item));
 }
 
@@ -763,6 +766,70 @@ function wireColorAdjustDialog() {
   });
 }
 
+// ---- OUTLINE DIALOG -------------------------------------------------------
+let olItem = null;
+let olOriginalImageData = null;
+
+function olCurrentOptions() {
+  const hex = document.getElementById('olStrokeColor').value;
+  return {
+    strokeWidth: parseFloat(document.getElementById('olStrokeWidth').value),
+    strokeColor: {
+      r: parseInt(hex.slice(1, 3), 16),
+      g: parseInt(hex.slice(3, 5), 16),
+      b: parseInt(hex.slice(5, 7), 16),
+    },
+  };
+}
+
+function olRedrawPreview() {
+  const canvas = document.getElementById('olPreviewCanvas');
+  const ctx = canvas.getContext('2d');
+  const result = applyOutline(olOriginalImageData, olCurrentOptions());
+  ctx.putImageData(new ImageData(result.data, result.width, result.height), 0, 0);
+}
+
+async function openOutlineDialog(item) {
+  olItem = item;
+  try {
+    olOriginalImageData = await loadItemImageData(item);
+  } catch (err) {
+    setStatus('Couldn\'t load image for outline: ' + err, 'err');
+    return;
+  }
+
+  const canvas = document.getElementById('olPreviewCanvas');
+  canvas.width = olOriginalImageData.width;
+  canvas.height = olOriginalImageData.height;
+
+  document.getElementById('olStrokeWidthValue').textContent = document.getElementById('olStrokeWidth').value;
+  olRedrawPreview();
+
+  document.getElementById('outlineDialog').showModal();
+}
+
+function wireOutlineDialog() {
+  document.getElementById('olStrokeWidth').addEventListener('input', () => {
+    document.getElementById('olStrokeWidthValue').textContent = document.getElementById('olStrokeWidth').value;
+    olRedrawPreview();
+  });
+  document.getElementById('olStrokeColor').addEventListener('input', olRedrawPreview);
+
+  document.getElementById('olCancelBtn').addEventListener('click', () => document.getElementById('outlineDialog').close());
+
+  document.getElementById('olApplyBtn').addEventListener('click', async () => {
+    const result = applyOutline(olOriginalImageData, olCurrentOptions());
+    try {
+      const outputPath = await saveProcessedImageForItem(olItem, result, 'outlined');
+      setStatus('Outline applied — saved to ' + outputPath, 'ok');
+    } catch (err) {
+      setStatus('Couldn\'t save outlined image: ' + err, 'err');
+      return;
+    }
+    document.getElementById('outlineDialog').close();
+  });
+}
+
 function renderPopupSlideProperties(item, body) {
   const p = item.props;
   body.innerHTML = `
@@ -908,6 +975,7 @@ window.addEventListener('DOMContentLoaded', () => {
   wireCropDialog();
   wirePadDialog();
   wireColorAdjustDialog();
+  wireOutlineDialog();
   els.openProjectBtn.addEventListener('click', openProject);
   els.saveProjectBtn.addEventListener('click', saveProject);
   els.bakeBtn.addEventListener('click', bakeProject);

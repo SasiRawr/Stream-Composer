@@ -4,6 +4,17 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v0.5.0 — 2026-08-05 (Scene Composer)
+
+### Added
+- **Outline** on `image` items — traces a solid-color border around the
+  image's visible (non-transparent) content, with a thickness and color
+  picker and a live preview. Works best on an image that already has a
+  transparent background, like one you've just Chroma Keyed — pairs
+  naturally to get a clean "sticker" cutout look.
+
+Popup Slide Editor unchanged in this release (still v0.1.0).
+
 ## v0.4.0 — 2026-08-05 (Scene Composer)
 
 ### Added

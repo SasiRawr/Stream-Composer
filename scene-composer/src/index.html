@@ -211,6 +211,34 @@
   </div>
 </dialog>
 
+<!--
+  Outline dialog: traces a solid border around the image's visible content
+  (needs real transparency to trace against - works best after Chroma Key
+  or on an already-transparent PNG). Same non-destructive pattern - writes
+  a new "<id>-outlined.png" rather than touching the original.
+-->
+<dialog id="outlineDialog" class="wide-dialog">
+  <h2>Outline</h2>
+  <div class="hint">Traces a border around the image's visible (non-transparent) content — works best on an image that already has a transparent background, like one you've just Chroma Keyed.</div>
+  <div class="ck-preview-wrap">
+    <canvas id="olPreviewCanvas"></canvas>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label for="olStrokeWidth">Thickness: <span id="olStrokeWidthValue"></span>px</label>
+      <input type="range" id="olStrokeWidth" min="1" max="30" step="1" value="6">
+    </div>
+    <div class="field">
+      <label for="olStrokeColor">Color</label>
+      <input type="color" id="olStrokeColor" value="#ffffff">
+    </div>
+  </div>
+  <div class="actions">
+    <button class="primary" id="olApplyBtn" type="button">Apply</button>
+    <button class="secondary" id="olCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
 <script type="module" src="/main.js"></script>
 </body>
 </html>

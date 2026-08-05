@@ -235,9 +235,20 @@ saturation (blend toward/away from each pixel's own luminance) as three
 independent, composable sliders with a live preview — 10/10 unit tests.
 Alpha is never touched. Writes `<item-id>-adjusted.png`.
 
+**Outline is now built too** (2026-08-05, v0.5.0) —
+`scene-composer/src/outline.js` + `outline.test.mjs`. Traces a solid-color
+border around an image's visible (alpha > threshold) content: any
+transparent pixel within `strokeWidth` of a content pixel gets painted
+with the stroke color, using a circular (not square) neighborhood check
+so the border looks rounded rather than blocky. 5/5 unit tests, including
+one confirming the circular-vs-square distinction directly. Designed to
+pair with chroma-key output — a "sticker" cutout look needs real
+transparency to trace an edge against. Writes `<item-id>-outlined.png`.
+
 Masking (MobileSAM) and background removal (BiRefNet_lite, §3) are still
 **researched and decided, not yet built** — deliberately sequenced after
-the deterministic features (chroma-key, crop, pad) specifically because
+the deterministic features (chroma-key, crop, pad, color adjust, outline)
+specifically because
 they need real visual judgment to verify (an ML model's output "looks
 right" or it doesn't) in a way pure math doesn't. Vectorization (VTracer)
 is lower priority than these two per Haiku's follow-up research
