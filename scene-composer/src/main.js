@@ -16,6 +16,7 @@ import { Canvas, Rect, FabricImage } from 'fabric';
 import { buildSceneHtml, collectAssetCopies } from './bake.js';
 import { applyChromaKey } from './chromakey.js';
 import { cropImageData, padImageData } from './croppad.js';
+import { applyColorAdjustments } from './coloradjust.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -369,6 +370,7 @@ function renderImageProperties(item, body) {
     <button class="secondary block" id="pf-chromaKey" type="button">Chroma Key…</button>
     <button class="secondary block" id="pf-crop" type="button">Crop…</button>
     <button class="secondary block" id="pf-pad" type="button">Pad…</button>
+    <button class="secondary block" id="pf-colorAdjust" type="button">Color Adjust…</button>
   `;
   document.getElementById('pf-replaceImage').addEventListener('click', async () => {
     const path = await invoke('pick_image_file');
@@ -379,6 +381,7 @@ function renderImageProperties(item, body) {
   });
   document.getElementById('pf-chromaKey').addEventListener('click', () => openChromaKeyDialog(item));
   document.getElementById('pf-crop').addEventListener('click', () => openCropDialog(item));
+  document.getElementById('pf-colorAdjust').addEventListener('click', () => openColorAdjustDialog(item));
   document.getElementById('pf-pad').addEventListener('click', () => openPadDialog(item));
 }
 
@@ -683,6 +686,83 @@ function wirePadDialog() {
   });
 }
 
+// ---- COLOR ADJUST DIALOG ---------------------------------------------------
+// Same live-preview-on-slider-input pattern as Chroma Key: recompute from
+// the untouched original on every slider move, so adjustments never
+// compound or drift from repeated tweaking.
+let caItem = null;
+let caOriginalImageData = null;
+
+function caCurrentOptions() {
+  return {
+    brightness: parseFloat(document.getElementById('caBrightness').value),
+    contrast: parseFloat(document.getElementById('caContrast').value),
+    saturation: parseFloat(document.getElementById('caSaturation').value),
+  };
+}
+
+function caUpdateSliderLabels() {
+  document.getElementById('caBrightnessValue').textContent = document.getElementById('caBrightness').value;
+  document.getElementById('caContrastValue').textContent = document.getElementById('caContrast').value;
+  document.getElementById('caSaturationValue').textContent = document.getElementById('caSaturation').value;
+}
+
+function caRedrawPreview() {
+  const canvas = document.getElementById('caPreviewCanvas');
+  const ctx = canvas.getContext('2d');
+  const result = applyColorAdjustments(caOriginalImageData, caCurrentOptions());
+  ctx.putImageData(new ImageData(result.data, result.width, result.height), 0, 0);
+}
+
+async function openColorAdjustDialog(item) {
+  caItem = item;
+  try {
+    caOriginalImageData = await loadItemImageData(item);
+  } catch (err) {
+    setStatus('Couldn\'t load image for color adjust: ' + err, 'err');
+    return;
+  }
+
+  const canvas = document.getElementById('caPreviewCanvas');
+  canvas.width = caOriginalImageData.width;
+  canvas.height = caOriginalImageData.height;
+
+  ['caBrightness', 'caContrast', 'caSaturation'].forEach((id) => { document.getElementById(id).value = 0; });
+  caUpdateSliderLabels();
+  caRedrawPreview();
+
+  document.getElementById('colorAdjustDialog').showModal();
+}
+
+function wireColorAdjustDialog() {
+  ['caBrightness', 'caContrast', 'caSaturation'].forEach((id) => {
+    document.getElementById(id).addEventListener('input', () => {
+      caUpdateSliderLabels();
+      caRedrawPreview();
+    });
+  });
+
+  document.getElementById('caResetBtn').addEventListener('click', () => {
+    ['caBrightness', 'caContrast', 'caSaturation'].forEach((id) => { document.getElementById(id).value = 0; });
+    caUpdateSliderLabels();
+    caRedrawPreview();
+  });
+
+  document.getElementById('caCancelBtn').addEventListener('click', () => document.getElementById('colorAdjustDialog').close());
+
+  document.getElementById('caApplyBtn').addEventListener('click', async () => {
+    const result = applyColorAdjustments(caOriginalImageData, caCurrentOptions());
+    try {
+      const outputPath = await saveProcessedImageForItem(caItem, result, 'adjusted');
+      setStatus('Color adjusted — saved to ' + outputPath, 'ok');
+    } catch (err) {
+      setStatus('Couldn\'t save color-adjusted image: ' + err, 'err');
+      return;
+    }
+    document.getElementById('colorAdjustDialog').close();
+  });
+}
+
 function renderPopupSlideProperties(item, body) {
   const p = item.props;
   body.innerHTML = `
@@ -827,6 +907,7 @@ window.addEventListener('DOMContentLoaded', () => {
   wireChromaKeyDialog();
   wireCropDialog();
   wirePadDialog();
+  wireColorAdjustDialog();
   els.openProjectBtn.addEventListener('click', openProject);
   els.saveProjectBtn.addEventListener('click', saveProject);
   els.bakeBtn.addEventListener('click', bakeProject);

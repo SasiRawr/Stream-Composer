@@ -182,6 +182,35 @@
   </div>
 </dialog>
 
+<!--
+  Color Adjust dialog: brightness/contrast/saturation with a live preview.
+  Same non-destructive pattern as the others - writes a new
+  "<id>-adjusted.png" rather than touching the original.
+-->
+<dialog id="colorAdjustDialog" class="wide-dialog">
+  <h2>Color Adjust</h2>
+  <div class="ck-preview-wrap">
+    <canvas id="caPreviewCanvas"></canvas>
+  </div>
+  <div class="field">
+    <label for="caBrightness">Brightness: <span id="caBrightnessValue"></span></label>
+    <input type="range" id="caBrightness" min="-1" max="1" step="0.02" value="0">
+  </div>
+  <div class="field">
+    <label for="caContrast">Contrast: <span id="caContrastValue"></span></label>
+    <input type="range" id="caContrast" min="-1" max="1" step="0.02" value="0">
+  </div>
+  <div class="field">
+    <label for="caSaturation">Saturation: <span id="caSaturationValue"></span></label>
+    <input type="range" id="caSaturation" min="-1" max="1" step="0.02" value="0">
+  </div>
+  <div class="actions">
+    <button class="secondary" id="caResetBtn" type="button">Reset</button>
+    <button class="primary" id="caApplyBtn" type="button">Apply</button>
+    <button class="secondary" id="caCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
 <script type="module" src="/main.js"></script>
 </body>
 </html>

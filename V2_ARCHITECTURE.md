@@ -228,6 +228,13 @@ transparent). Both write a new file (`<item-id>-cropped.png` /
 result's real pixel dimensions (no stretch/distortion). Not yet
 click-through tested by a human.
 
+**Color Adjust is now built too** (2026-08-05, v0.4.0) —
+`scene-composer/src/coloradjust.js` + `coloradjust.test.mjs`. Brightness
+(additive offset), contrast (scale around the 128 midpoint), and
+saturation (blend toward/away from each pixel's own luminance) as three
+independent, composable sliders with a live preview — 10/10 unit tests.
+Alpha is never touched. Writes `<item-id>-adjusted.png`.
+
 Masking (MobileSAM) and background removal (BiRefNet_lite, §3) are still
 **researched and decided, not yet built** — deliberately sequenced after
 the deterministic features (chroma-key, crop, pad) specifically because

@@ -4,6 +4,15 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v0.4.0 — 2026-08-05 (Scene Composer)
+
+### Added
+- **Color Adjust** on `image` items — brightness, contrast, and saturation
+  sliders with a live preview. Writes a new file rather than touching the
+  original.
+
+Popup Slide Editor unchanged in this release (still v0.1.0).
+
 ## v0.3.0 — 2026-08-05 (Scene Composer)
 
 ### Added
