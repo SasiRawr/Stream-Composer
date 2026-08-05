@@ -1,9 +1,9 @@
 // ============================================================================
-// Stream-Builder v2 — Rust backend (the "src-tauri" side of the app)
+// Stream Composer — Rust backend (the "src-tauri" side of the app)
 // ============================================================================
 // The frontend (src/main.js) can't touch the filesystem directly — that's
 // the whole reason this is a desktop app and not a webpage (see the
-// "browser file-write" section of HANDOFF_FOR_CLAUDE_CODE.md). Instead, the
+// "browser file-write" section of PROJECT_NOTES.md). Instead, the
 // frontend calls one of the commands below via `invoke("command_name", {...})`,
 // and Rust does the actual disk/OS work on its behalf. Everything here is
 // deliberately small and literal — no framework magic, just: pick a folder,

@@ -1,40 +1,52 @@
-# Stream Overlay Creation Suite
+# Stream Composer
 
-Two things live in this repo:
+Free, local tools for building and editing stream overlays — no
+Photoshop, GIMP, or paywalled online editor required.
 
-## `v1-pop-up-slide/`
+## What's in this repo
 
-A working, tested slide-popup overlay generator for OBS Browser Source —
-a small animated badge that cycles through promotional slides on a loop.
-Includes a finished example campaign (TheNerdyBox), a reference example
-for per-slide images, and a packaged Claude Skill that generates new
-campaigns from an interview. Fully functional today — open
+### `app/`
+
+A desktop app (Windows, Tauri) for building and editing the classic
+"popup slide" overlay — a small animated badge that cycles through
+promotional messages on a loop, used as an OBS Browser Source. Open a
+project folder, edit slides/transition/timing through a real form, and
+save changes straight back to disk.
+
+### `scene-composer/`
+
+A desktop app (Windows, Tauri) for composing a whole stream layout on a
+canvas sized to your real stream resolution — drag, resize, and rotate
+items (a webcam positioning frame, images, popup-slide badges), then bake
+the arrangement into a single OBS Browser Source.
+
+### `v1-pop-up-slide/`
+
+The original, still fully working popup-slide overlay generator that
+`app/` builds on — a finished example campaign, a reference example for
+per-slide images, and an automated generator that creates new campaigns
+from an interview. Open
 `v1-pop-up-slide/campaign-thenerdybox/stream-popup-overlay.html` in OBS
 as a Browser Source (640×220, local file) to see it running.
 
-## `HANDOFF_FOR_CLAUDE_CODE.md`
+### `PROJECT_NOTES.md` and `V2_ARCHITECTURE.md`
 
-The real reason this repo exists in its current form: a detailed brief
-for building v2 — a full standalone WYSIWYG app for creating stream
-overlays *and* editing the images that go into them (crop, pad,
-background removal, masking), as a free/local alternative to Photoshop
-or GIMP for streamers. v1 turned out to need a real desktop app rather
-than a webpage for one concrete, unavoidable reason (browsers can't save
-files in place) — that document explains why, along with everything else
-worth knowing before starting v2: decisions made, constraints discovered,
-bugs hit and fixed, and a concrete technical starting point.
-
-**Read that file first if you're picking this up to build v2.** It's
-written for exactly that handoff, in more detail than this README.
+Project history, decisions, and constraints (`PROJECT_NOTES.md`), and the
+technical architecture behind the current apps — canvas library,
+background removal, the item/project data model (`V2_ARCHITECTURE.md`).
+Worth reading before making changes.
 
 ## Repo structure
 
 ```
 .
-├── README.md                        (this file)
-├── HANDOFF_FOR_CLAUDE_CODE.md        the v2 brief — read this first
+├── README.md                  (this file)
+├── PROJECT_NOTES.md            history, decisions, constraints
+├── V2_ARCHITECTURE.md          current technical architecture
+├── app/                        popup-slide editor (desktop app)
+├── scene-composer/             stream layout composer (desktop app)
 └── v1-pop-up-slide/
-    ├── campaign-thenerdybox/         finished, working example campaign
-    ├── example-separate-images/      reference for per-slide images
-    └── pop-up-slide-skill/           the packaged Claude Skill
+    ├── campaign-thenerdybox/   finished, working example campaign
+    ├── example-separate-images/ reference for per-slide images
+    └── pop-up-slide-skill/     automated campaign generator
 ```

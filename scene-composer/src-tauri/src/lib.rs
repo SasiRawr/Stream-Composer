@@ -1,7 +1,7 @@
 // ============================================================================
 // Scene Composer — Rust backend
 // ============================================================================
-// Same small-explicit-commands pattern as Stream-Builder's app/src-tauri —
+// Same small-explicit-commands pattern as the Popup Slide Editor's app/src-tauri —
 // see that file's comments for the full reasoning. This one adds a couple
 // of binary-file commands on top, since Scene Composer needs to import
 // arbitrary image files (logos, graphics) and copy them into a baked

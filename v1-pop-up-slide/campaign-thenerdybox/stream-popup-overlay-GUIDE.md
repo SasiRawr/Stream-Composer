@@ -140,10 +140,11 @@ the other approach — each slide with its own image — in its own folder
 three other logo directions from your brand kit as stand-in thumbnails.
 Swap in your own PNGs and it works the same way.
 
-**The reusable skill**: everything above (interview questions, generation
+**The reusable generator**: everything above (interview questions, generation
 rules, the 640×220 sizing convention, the timing-field reference table)
-is now packaged as a Claude skill called `pop-up-slide`
-(`pop-up-slide-skill.zip`). Running it again for a future campaign will
+is now packaged as an automated generator called `pop-up-slide`
+(`pop-up-slide-skill.zip` — see `pop-up-slide-skill/`). Running it again
+for a future campaign will
 walk through the same setup questions you asked for, generate a fresh
 two-file overlay, and keep every future one the same size as this one.
 

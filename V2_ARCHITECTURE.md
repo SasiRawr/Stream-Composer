@@ -1,9 +1,9 @@
 # v2 Architecture Decisions
 
 This document records the technical decisions made for v2 — the standalone
-Stream Overlay Creation Suite — and why. Read `HANDOFF_FOR_CLAUDE_CODE.md`
-first for the full background; this picks up where that document leaves
-open questions and answers them.
+Stream Overlay Creation Suite — and why. Read `PROJECT_NOTES.md` first for
+the full background; this picks up where that document leaves open
+questions and answers them.
 
 **Scope note:** v2 is not "popup slides plus an image editor." It's a
 general-purpose stream overlay design suite — the goal is that if a
@@ -18,7 +18,7 @@ with that goal as a hard requirement, not an afterthought.
 
 Chosen over Electron for a smaller install size, lower memory footprint,
 and real filesystem access (needed because browsers can't save files in
-place — see §3.5 of the handoff doc for why that matters). The frontend
+place — see §3.5 of PROJECT_NOTES.md for why that matters). The frontend
 runs inside a system webview (WebView2 on Windows, which is Chromium-based
 and already installed on this machine), so ordinary web technologies —
 HTML/CSS/JS, canvas libraries, WASM — all work normally.
@@ -133,10 +133,10 @@ Rather than reinventing v1's one-off `messagesText` plain-block parser for
 every new module, plaintext editing becomes a **field type** in the
 schema system (`type: "multiline-parsed"`, with a pluggable parser). Any
 module can opt a field into "edit as plain text" without a bespoke
-mechanism — this keeps §3.3 of the handoff doc (plaintext editing as a
+mechanism — this keeps §3.3 of PROJECT_NOTES.md (plaintext editing as a
 first-class option) true for every module, forever, not just the first one.
 
-### Avoiding the bug class from §3.8 of the handoff doc
+### Avoiding the bug class from §3.8 of PROJECT_NOTES.md
 
 The icon/text/width desync bug happened because a module's rendered state
 could be updated piecemeal by different callers. The fix is structural:

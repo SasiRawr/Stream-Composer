@@ -3,7 +3,8 @@
 // ============================================================================
 // A Project is { canvasWidth, canvasHeight, items: [...] }, saved as a real
 // file (project.json) via Tauri's fs commands (see src-tauri/src/lib.rs) —
-// same "real save, not browser storage" principle as Stream-Builder's app/.
+// same "real save, not browser storage" principle as the Popup Slide
+// Editor's app/.
 //
 // Each item: { id, type, x, y, width, height, rotation, zIndex, props }.
 // x/y/width/height/rotation are always stored in REAL stream-resolution
@@ -390,7 +391,7 @@ function renderPopupSlideProperties(item, body) {
     <div class="field"><label>Slides</label></div>
     <div id="pf-slideList"></div>
     <button class="secondary block" id="pf-addSlide" type="button">+ Add slide</button>
-    <div class="hint">Icons/images per slide aren't supported here yet — for now every slide shows plain tag + text. Use Stream-Builder's popup-slide editor (app/) if you need per-slide icons.</div>
+    <div class="hint">Icons/images per slide aren't supported here yet — for now every slide shows plain tag + text. Use the Popup Slide Editor (app/) if you need per-slide icons.</div>
   `;
 
   function renderSlideList() {

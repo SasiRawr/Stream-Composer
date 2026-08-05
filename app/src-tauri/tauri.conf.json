@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Stream-Builder",
+  "productName": "Popup Slide Editor",
   "version": "0.1.0",
-  "identifier": "com.thenerdybox.streambuilder",
+  "identifier": "com.thenerdybox.popupslideeditor",
   "build": {
     "frontendDist": "../src"
   },
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Stream-Builder",
+        "title": "Popup Slide Editor",
         "width": 860,
         "height": 720
       }
