@@ -257,10 +257,21 @@ darkened). 4/4 unit tests. Useful both for stylistic softening and for
 obscuring visible detail (an account name, a chat overlay) a streamer
 doesn't want readable on screen. Writes `<item-id>-blurred.png`.
 
+**Flip & Rotate are now built too** (2026-08-05, v0.7.0) —
+`scene-composer/src/transform.js` + `transform.test.mjs`. Unlike every
+other image-editing feature so far, these are instant one-click actions
+(Flip Horizontal, Flip Vertical, Rotate 90° CW/CCW) with no dialog —
+there's no parameter to tune, so a slider/preview UI would just be
+ceremony. Pure pixel remapping, no interpolation needed since every
+operation lands exactly on whole pixels. 10/10 unit tests, including
+hand-computed expected layouts for every rotation and a round-trip check
+(four consecutive 90° rotations return to the original arrangement).
+Writes `<item-id>-flipped.png` / `<item-id>-rotated.png`.
+
 Masking (MobileSAM) and background removal (BiRefNet_lite, §3) are still
 **researched and decided, not yet built** — deliberately sequenced after
 the deterministic features (chroma-key, crop, pad, color adjust, outline,
-blur) specifically because
+blur, flip/rotate) specifically because
 they need real visual judgment to verify (an ML model's output "looks
 right" or it doesn't) in a way pure math doesn't. Vectorization (VTracer)
 is lower priority than these two per Haiku's follow-up research

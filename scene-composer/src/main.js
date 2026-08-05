@@ -19,6 +19,7 @@ import { cropImageData, padImageData } from './croppad.js';
 import { applyColorAdjustments } from './coloradjust.js';
 import { applyOutline } from './outline.js';
 import { applyBlur } from './blur.js';
+import { applyFlip, applyRotate } from './transform.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -375,6 +376,12 @@ function renderImageProperties(item, body) {
     <button class="secondary block" id="pf-colorAdjust" type="button">Color Adjust…</button>
     <button class="secondary block" id="pf-outline" type="button">Outline…</button>
     <button class="secondary block" id="pf-blur" type="button">Blur…</button>
+    <div class="button-row">
+      <button class="secondary" id="pf-flipH" type="button" title="Flip Horizontal">Flip ↔</button>
+      <button class="secondary" id="pf-flipV" type="button" title="Flip Vertical">Flip ↕</button>
+      <button class="secondary" id="pf-rotateCW" type="button" title="Rotate 90° Clockwise">Rotate ↻</button>
+      <button class="secondary" id="pf-rotateCCW" type="button" title="Rotate 90° Counter-Clockwise">Rotate ↺</button>
+    </div>
   `;
   document.getElementById('pf-replaceImage').addEventListener('click', async () => {
     const path = await invoke('pick_image_file');
@@ -388,7 +395,32 @@ function renderImageProperties(item, body) {
   document.getElementById('pf-colorAdjust').addEventListener('click', () => openColorAdjustDialog(item));
   document.getElementById('pf-outline').addEventListener('click', () => openOutlineDialog(item));
   document.getElementById('pf-blur').addEventListener('click', () => openBlurDialog(item));
+  document.getElementById('pf-flipH').addEventListener('click', () => applyInstantTransform(item, (img) => applyFlip(img, { horizontal: true }), 'flipped'));
+  document.getElementById('pf-flipV').addEventListener('click', () => applyInstantTransform(item, (img) => applyFlip(img, { vertical: true }), 'flipped'));
+  document.getElementById('pf-rotateCW').addEventListener('click', () => applyInstantTransform(item, (img) => applyRotate(img, 90), 'rotated'));
+  document.getElementById('pf-rotateCCW').addEventListener('click', () => applyInstantTransform(item, (img) => applyRotate(img, 270), 'rotated'));
   document.getElementById('pf-pad').addEventListener('click', () => openPadDialog(item));
+}
+
+// Flip/rotate are instant one-click actions, unlike the other image edits —
+// there's nothing to tune with a slider, so no dialog/preview is needed.
+// `transformFn` is one of applyFlip/applyRotate already bound with its
+// specific arguments (see the button handlers above).
+async function applyInstantTransform(item, transformFn, verbLabel) {
+  let imageData;
+  try {
+    imageData = await loadItemImageData(item);
+  } catch (err) {
+    setStatus('Couldn\'t load image: ' + err, 'err');
+    return;
+  }
+  const result = transformFn(imageData);
+  try {
+    const outputPath = await saveProcessedImageForItem(item, result, verbLabel);
+    setStatus('Image ' + verbLabel + ' — saved to ' + outputPath, 'ok');
+  } catch (err) {
+    setStatus('Couldn\'t save ' + verbLabel + ' image: ' + err, 'err');
+  }
 }
 
 // ---- CHROMA KEY DIALOG ------------------------------------------------------

@@ -4,6 +4,16 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v0.7.0 — 2026-08-05 (Scene Composer)
+
+### Added
+- **Flip & Rotate** on `image` items — four instant one-click actions:
+  Flip Horizontal, Flip Vertical, Rotate 90° Clockwise, Rotate 90°
+  Counter-Clockwise. No dialog needed — nothing to tune, so it applies
+  immediately.
+
+Popup Slide Editor unchanged in this release (still v0.1.0).
+
 ## v0.6.0 — 2026-08-05 (Scene Composer)
 
 ### Added

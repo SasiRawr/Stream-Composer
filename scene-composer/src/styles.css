@@ -185,6 +185,18 @@ button.block {
   text-align: left;
 }
 
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.button-row button.secondary {
+  flex: 1;
+  padding: 10px 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
 .remove-btn {
   margin-top: 16px;
   width: 100%;
