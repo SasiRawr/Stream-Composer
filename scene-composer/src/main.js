@@ -15,6 +15,7 @@
 import { Canvas, Rect, FabricImage } from 'fabric';
 import { buildSceneHtml, collectAssetCopies } from './bake.js';
 import { applyChromaKey } from './chromakey.js';
+import { cropImageData, padImageData } from './croppad.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -366,6 +367,8 @@ function renderImageProperties(item, body) {
     </div>
     <button class="secondary block" id="pf-replaceImage" type="button">Replace image…</button>
     <button class="secondary block" id="pf-chromaKey" type="button">Chroma Key…</button>
+    <button class="secondary block" id="pf-crop" type="button">Crop…</button>
+    <button class="secondary block" id="pf-pad" type="button">Pad…</button>
   `;
   document.getElementById('pf-replaceImage').addEventListener('click', async () => {
     const path = await invoke('pick_image_file');
@@ -375,6 +378,8 @@ function renderImageProperties(item, body) {
     renderPropertiesPanel();
   });
   document.getElementById('pf-chromaKey').addEventListener('click', () => openChromaKeyDialog(item));
+  document.getElementById('pf-crop').addEventListener('click', () => openCropDialog(item));
+  document.getElementById('pf-pad').addEventListener('click', () => openPadDialog(item));
 }
 
 // ---- CHROMA KEY DIALOG ------------------------------------------------------
@@ -504,6 +509,178 @@ function dirname(path) {
   const sep = path.includes('\\') ? '\\' : '/';
   const idx = path.lastIndexOf(sep);
   return idx === -1 ? path : path.slice(0, idx);
+}
+
+// Reads an item's image off disk and returns { imageData, naturalWidth,
+// naturalHeight } — shared by the crop and pad dialogs below (both need
+// the same "load this item's source image as pixels" step).
+async function loadItemImageData(item) {
+  const base64 = await invoke('read_binary_file_base64', { path: item.props.sourcePath });
+  const ext = (item.props.sourcePath.split('.').pop() || 'png').toLowerCase();
+  const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  const img = new Image();
+  await new Promise((resolve, reject) => {
+    img.onload = resolve;
+    img.onerror = reject;
+    img.src = `data:${mime};base64,${base64}`;
+  });
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = img.naturalWidth;
+  tmpCanvas.height = img.naturalHeight;
+  const tmpCtx = tmpCanvas.getContext('2d');
+  tmpCtx.drawImage(img, 0, 0);
+  return tmpCtx.getImageData(0, 0, tmpCanvas.width, tmpCanvas.height);
+}
+
+// Writes a processed { width, height, data } result out as a new PNG next
+// to the item's original file, and updates the item to point at it — the
+// same non-destructive pattern chroma-key uses. Also resizes the item's
+// on-canvas box to the result's real dimensions (1:1, no stretching),
+// since crop/pad both change the image's actual pixel size.
+async function saveProcessedImageForItem(item, result, suffix) {
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = result.width;
+  tmpCanvas.height = result.height;
+  tmpCanvas.getContext('2d').putImageData(new ImageData(result.data, result.width, result.height), 0, 0);
+  const dataUrl = tmpCanvas.toDataURL('image/png');
+  const base64Data = dataUrl.substring(dataUrl.indexOf(',') + 1);
+  const outputPath = joinPath(dirname(item.props.sourcePath), item.id + '-' + suffix + '.png');
+  await invoke('write_binary_file', { path: outputPath, base64Data });
+  item.props.sourcePath = outputPath;
+  item.width = result.width;
+  item.height = result.height;
+  await refreshFabricObjectForItem(item.id);
+  renderPropertiesPanel();
+  return outputPath;
+}
+
+// ---- CROP DIALOG -------------------------------------------------------
+// A small dedicated Fabric canvas: the image sits underneath as a static
+// (non-interactive) background, and one draggable/resizable Rect on top
+// is the crop selection. Apply reads the Rect's bounds back into real
+// image pixels and calls cropImageData.
+let cropItem = null;
+let cropFabricCanvas = null;
+let cropOriginalImageData = null;
+let cropSelectionRect = null;
+let cropDisplayScale = 1;
+const CROP_MAX_DISPLAY = 620;
+
+async function openCropDialog(item) {
+  cropItem = item;
+  cropOriginalImageData = await loadItemImageData(item);
+
+  cropDisplayScale = Math.min(CROP_MAX_DISPLAY / cropOriginalImageData.width, CROP_MAX_DISPLAY / cropOriginalImageData.height, 1);
+  const displayWidth = Math.round(cropOriginalImageData.width * cropDisplayScale);
+  const displayHeight = Math.round(cropOriginalImageData.height * cropDisplayScale);
+
+  if (cropFabricCanvas) cropFabricCanvas.dispose();
+  cropFabricCanvas = new Canvas(document.getElementById('cropCanvasEl'), {
+    width: displayWidth,
+    height: displayHeight,
+    backgroundColor: 'transparent',
+  });
+
+  // Draw the image as the background by loading it fresh at display size
+  // (simplest way to get a non-interactive backdrop under the crop box).
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = cropOriginalImageData.width;
+  tmpCanvas.height = cropOriginalImageData.height;
+  tmpCanvas.getContext('2d').putImageData(cropOriginalImageData, 0, 0);
+  const bgImage = await FabricImage.fromURL(tmpCanvas.toDataURL('image/png'));
+  bgImage.set({ left: 0, top: 0, scaleX: cropDisplayScale, scaleY: cropDisplayScale, selectable: false, evented: false });
+  cropFabricCanvas.add(bgImage);
+
+  // Default selection: the middle 60% of the image.
+  const selW = displayWidth * 0.6;
+  const selH = displayHeight * 0.6;
+  cropSelectionRect = new Rect({
+    left: (displayWidth - selW) / 2,
+    top: (displayHeight - selH) / 2,
+    width: selW,
+    height: selH,
+    fill: 'rgba(124,92,255,0.15)',
+    stroke: '#a594ff',
+    strokeWidth: 2,
+    strokeUniform: true,
+    cornerColor: '#7c5cff',
+  });
+  cropFabricCanvas.add(cropSelectionRect);
+  cropFabricCanvas.setActiveObject(cropSelectionRect);
+  cropFabricCanvas.requestRenderAll();
+
+  document.getElementById('cropDialog').showModal();
+}
+
+function wireCropDialog() {
+  document.getElementById('cropCancelBtn').addEventListener('click', () => document.getElementById('cropDialog').close());
+
+  document.getElementById('cropApplyBtn').addEventListener('click', async () => {
+    const rect = {
+      x: cropSelectionRect.left / cropDisplayScale,
+      y: cropSelectionRect.top / cropDisplayScale,
+      width: (cropSelectionRect.width * cropSelectionRect.scaleX) / cropDisplayScale,
+      height: (cropSelectionRect.height * cropSelectionRect.scaleY) / cropDisplayScale,
+    };
+    const result = cropImageData(cropOriginalImageData, rect);
+    try {
+      const outputPath = await saveProcessedImageForItem(cropItem, result, 'cropped');
+      setStatus('Cropped — saved to ' + outputPath, 'ok');
+    } catch (err) {
+      setStatus('Couldn\'t save cropped image: ' + err, 'err');
+      return;
+    }
+    document.getElementById('cropDialog').close();
+  });
+}
+
+// ---- PAD DIALOG ---------------------------------------------------------
+let padItem = null;
+
+function openPadDialog(item) {
+  padItem = item;
+  document.getElementById('padDialog').showModal();
+}
+
+function wirePadDialog() {
+  document.getElementById('padCancelBtn').addEventListener('click', () => document.getElementById('padDialog').close());
+
+  document.getElementById('padApplyBtn').addEventListener('click', async () => {
+    const transparent = document.getElementById('padTransparent').checked;
+    const hex = document.getElementById('padFillColor').value; // "#rrggbb"
+    const fillColor = transparent
+      ? { r: 0, g: 0, b: 0, a: 0 }
+      : {
+          r: parseInt(hex.slice(1, 3), 16),
+          g: parseInt(hex.slice(3, 5), 16),
+          b: parseInt(hex.slice(5, 7), 16),
+          a: 255,
+        };
+    const options = {
+      top: parseFloat(document.getElementById('padTop').value) || 0,
+      right: parseFloat(document.getElementById('padRight').value) || 0,
+      bottom: parseFloat(document.getElementById('padBottom').value) || 0,
+      left: parseFloat(document.getElementById('padLeft').value) || 0,
+      fillColor,
+    };
+
+    let imageData;
+    try {
+      imageData = await loadItemImageData(padItem);
+    } catch (err) {
+      setStatus('Couldn\'t load image for padding: ' + err, 'err');
+      return;
+    }
+    const result = padImageData(imageData, options);
+    try {
+      const outputPath = await saveProcessedImageForItem(padItem, result, 'padded');
+      setStatus('Padded — saved to ' + outputPath, 'ok');
+    } catch (err) {
+      setStatus('Couldn\'t save padded image: ' + err, 'err');
+      return;
+    }
+    document.getElementById('padDialog').close();
+  });
 }
 
 function renderPopupSlideProperties(item, body) {
@@ -648,6 +825,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
   wireNewProjectDialog();
   wireChromaKeyDialog();
+  wireCropDialog();
+  wirePadDialog();
   els.openProjectBtn.addEventListener('click', openProject);
   els.saveProjectBtn.addEventListener('click', saveProject);
   els.bakeBtn.addEventListener('click', bakeProject);

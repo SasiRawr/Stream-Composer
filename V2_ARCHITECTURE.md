@@ -216,19 +216,69 @@ original file; writes `<item-id>-keyed.png` alongside it. **Not yet
 click-through tested by a human** — same caveat as the rest of Scene
 Composer.
 
-Masking (MobileSAM), background removal (BiRefNet_lite, §3), and
-vectorization (VTracer) are still **researched and decided, not yet
-built** — deliberately sequenced after chroma-key specifically because
+**Crop and Pad are now built too** (2026-08-05, v0.3.0) —
+`scene-composer/src/croppad.js` + `croppad.test.mjs`, same deterministic-
+math-first approach as chroma-key. Crop uses a small dedicated Fabric.js
+canvas (image as a static backdrop, one draggable/resizable Rect as the
+selection — reuses the same Fabric interaction model already proven on
+the main canvas) so the user drags a box rather than typing coordinates;
+Pad is a plain 4-field form (top/right/bottom/left + fill color or
+transparent). Both write a new file (`<item-id>-cropped.png` /
+`<item-id>-padded.png`) and resize the item's on-canvas box to match the
+result's real pixel dimensions (no stretch/distortion). Not yet
+click-through tested by a human.
+
+Masking (MobileSAM) and background removal (BiRefNet_lite, §3) are still
+**researched and decided, not yet built** — deliberately sequenced after
+the deterministic features (chroma-key, crop, pad) specifically because
 they need real visual judgment to verify (an ML model's output "looks
-right" or it doesn't) in a way chroma-key's pure math doesn't. Build
-these once Harvey has run Scene Composer for real and Playwright MCP
+right" or it doesn't) in a way pure math doesn't. Vectorization (VTracer)
+is lower priority than these two per Haiku's follow-up research
+(2026-08-05) into streamer pain points — see §6. Build the ML-based
+features once Harvey has run Scene Composer for real and Playwright MCP
 (connected 2026-08-04) is available in a live session to actually
-screenshot and iterate, rather than shipping three visually-unverifiable
+screenshot and iterate, rather than shipping visually-unverifiable
 features back to back.
 
 ---
 
-## 6. Scene Composer — a second, separate app
+## 6. Product-direction research (2026-08-05)
+
+Harvey asked for a broader pain-point sweep (what streamers/creators
+struggle with) and floated two bigger ideas: an OBS Studio rival, and
+built-in chat text-to-speech. Haiku research findings, taken seriously
+rather than just enthusiastically pursued:
+
+- **OBS-rival: not recommended.** OBS is free, open-source, deeply
+  entrenched (15+ years of community trust), and actively improving
+  (redesigned audio mixer, plugin manager, WebRTC simulcast as of
+  mid-2026). Streamlabs already tried "OBS but easier," and its resource
+  overhead pushed users back to plain OBS once they outgrew beginner
+  mode. Building a broadcast-app competitor is a massive engineering
+  lift with no clear unique angle against a free, entrenched incumbent.
+- **Built-in chat TTS: not recommended.** Already well-served by mature
+  free/freemium tools (Blerp, Sound Alerts) and native platform Channel
+  Points TTS. No differentiation from building it in-house; it would be
+  scope creep away from the actual value proposition.
+- **The validated opportunity**: overlay/asset creation workflow is a
+  real, repeatedly-cited pain point — template staleness, no integrated
+  design→export→OBS pipeline, PSD/XCF-to-PNG export friction. A
+  **stinger/transition builder that exports WebM with transparency** was
+  specifically called out as high-value and directly matches Harvey's
+  own stated interest in video/GIF/WebM support for chroma-keyed
+  transition stingers and animated webcam/stream frames — this is the
+  strongest signal for what to build toward next, once the still-image
+  feature set (chroma-key, crop, pad, and the still-pending background
+  removal/masking) is solid.
+- Also validated as worth keeping: an asset library/reuse system (save
+  a configured item as a reusable component across projects) and a
+  template-personalization flow (re-color/re-text a template without a
+  full re-edit) — both fit naturally on top of the existing Module/
+  Project model in §4, not architectural changes.
+
+---
+
+## 7. Scene Composer — a second, separate app
 
 Harvey asked (2026-08-04) for a genuinely different kind of tool than
 `app/`'s form-based popup-slide editor: an OBS/Streamlabs-style canvas
@@ -250,17 +300,27 @@ not worth duplicating here.
 
 ---
 
-## Suggested build order (updated 2026-08-04)
+## Suggested build order (updated 2026-08-05)
 
-1. ~~Minimal Tauri shell~~ — **done**, shipped as `app/` (Milestone 1).
-2. ~~Generalize to a real Module/schema system~~ — **in progress**, being
-   built directly as `scene-composer/` rather than as a prerequisite step
-   inside `app/` first (see §6).
-3. Additional modules/item types (borders, webcam frames, etc. beyond the
-   first 3) — additive once `scene-composer/`'s item-type pattern exists.
-4. Image editing milestone: background removal (§3, BiRefNet_lite) +
-   masking/chroma-key/vectorization (§5) — a substantial body of work on
-   its own, likely its own set of tools within `scene-composer/` once the
-   canvas/bake foundation is solid.
-5. Export targets beyond local OBS browser source (StreamElements/
+1. ~~Minimal Tauri shell~~ — **done**, shipped as `app/` ("Popup Slide Editor").
+2. ~~Generalize to a real Module/schema system~~ — **done**, built directly
+   as `scene-composer/` (§7) rather than as a prerequisite step inside
+   `app/` first.
+3. ~~Deterministic image-editing features~~ — **done**: chroma-key (v0.2.0),
+   crop + pad (v0.3.0). All three ship inside `scene-composer/`.
+4. **Next**: background removal (§3, BiRefNet_lite) and masking (§5,
+   MobileSAM) — need real visual judgment to verify, so wait for Harvey to
+   confirm Scene Composer's foundation works and for Playwright MCP to be
+   live in-session before starting.
+5. Additional item types (borders, more webcam-frame variants, etc.) —
+   additive once needed, no architecture change required.
+6. Stinger/transition builder (export WebM with transparency) — validated
+   by product-direction research (§6) as the strongest next-direction
+   signal, ties directly into Harvey's video/GIF/WebM chroma-key interest.
+   Bigger scope than the still-image features; its own planning pass.
+7. Vectorization (§5, VTracer) — lower priority than the above per §6.
+8. Export targets beyond local OBS browser source (StreamElements/
    StreamLabs) — separate scoping effort, later.
+9. Eventual: merge `app/` and `scene-composer/` into one suite (Harvey's
+   stated long-term goal) — revisit once several more modules exist and
+   the shared Module/Project model (§4) has proven itself across them.

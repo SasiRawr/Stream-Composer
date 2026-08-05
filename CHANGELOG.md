@@ -4,6 +4,24 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v0.3.0 — 2026-08-05 (Scene Composer)
+
+### Added
+- **Crop** on `image` items — drag a resizable selection box over the
+  image and keep only what's inside it.
+- **Pad** on `image` items — add space around the image (transparent by
+  default, or a solid fill color).
+
+Both write a new file rather than touching the original, and resize the
+item's on-canvas box to match the result so nothing looks stretched.
+Popup Slide Editor unchanged in this release (still v0.1.0).
+
+### Also in this release (installer polish, applies to both apps)
+- Installer icon replaced with the real TheNerdyBox logo, instead of the
+  default Tauri scaffold icon.
+- Confirmed installing a newer version now correctly replaces an older
+  one already on your machine, instead of installing side-by-side.
+
 ## v0.2.0 — 2026-08-05 (Scene Composer)
 
 ### Added

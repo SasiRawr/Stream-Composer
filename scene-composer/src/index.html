@@ -136,6 +136,52 @@
   </div>
 </dialog>
 
+<!--
+  Crop dialog: drag/resize the selection box over the image, then Apply
+  keeps only what's inside it. Same non-destructive pattern as Chroma
+  Key - writes a new "<id>-cropped.png" rather than touching the original.
+-->
+<dialog id="cropDialog" class="wide-dialog">
+  <h2>Crop</h2>
+  <div class="hint">Drag the box to select the region to keep, then Apply.</div>
+  <div class="ck-preview-wrap">
+    <canvas id="cropCanvasEl"></canvas>
+  </div>
+  <div class="actions">
+    <button class="primary" id="cropApplyBtn" type="button">Apply</button>
+    <button class="secondary" id="cropCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
+<!--
+  Pad dialog: adds a margin around the image (transparent by default, or
+  a solid fill color). Same non-destructive pattern - writes a new
+  "<id>-padded.png" rather than touching the original.
+-->
+<dialog id="padDialog">
+  <h2>Pad</h2>
+  <div class="hint">Adds space around the image. Leave "Transparent" checked for a see-through margin, or pick a fill color.</div>
+  <div class="field-row">
+    <div class="field"><label for="padTop">Top (px)</label><input type="number" id="padTop" min="0" value="0"></div>
+    <div class="field"><label for="padBottom">Bottom (px)</label><input type="number" id="padBottom" min="0" value="0"></div>
+  </div>
+  <div class="field-row">
+    <div class="field"><label for="padLeft">Left (px)</label><input type="number" id="padLeft" min="0" value="0"></div>
+    <div class="field"><label for="padRight">Right (px)</label><input type="number" id="padRight" min="0" value="0"></div>
+  </div>
+  <div class="field">
+    <label><input type="checkbox" id="padTransparent" checked> Transparent</label>
+  </div>
+  <div class="field">
+    <label for="padFillColor">Fill color (used if not transparent)</label>
+    <input type="color" id="padFillColor" value="#0a0a12">
+  </div>
+  <div class="actions">
+    <button class="primary" id="padApplyBtn" type="button">Apply</button>
+    <button class="secondary" id="padCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
 <script type="module" src="/main.js"></script>
 </body>
 </html>
