@@ -32,12 +32,13 @@ from an interview. Open
 `v1-pop-up-slide/campaign-thenerdybox/stream-popup-overlay.html` in OBS
 as a Browser Source (640×220, local file) to see it running.
 
-### `PROJECT_NOTES.md` and `V2_ARCHITECTURE.md`
+### `PROJECT_NOTES.md`, `V2_ARCHITECTURE.md`, and `ROADMAP.md`
 
-Project history, decisions, and constraints (`PROJECT_NOTES.md`), and the
+Project history, decisions, and constraints (`PROJECT_NOTES.md`), the
 technical architecture behind the current apps — canvas library,
-background removal, the item/project data model (`V2_ARCHITECTURE.md`).
-Worth reading before making changes.
+background removal, the item/project data model (`V2_ARCHITECTURE.md`) —
+and where the project is headed, including the v1.0.0 combined-suite
+merge and beyond (`ROADMAP.md`). Worth reading before making changes.
 
 ## Repo structure
 
@@ -46,6 +47,7 @@ Worth reading before making changes.
 ├── README.md                  (this file)
 ├── PROJECT_NOTES.md            history, decisions, constraints
 ├── V2_ARCHITECTURE.md          current technical architecture
+├── ROADMAP.md                  where this is headed (v0.8.0 → v2.0.0+)
 ├── app/                        popup-slide editor (desktop app)
 ├── scene-composer/             stream layout composer (desktop app)
 └── v1-pop-up-slide/
