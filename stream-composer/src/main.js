@@ -11,7 +11,7 @@
 // pixels — see DISPLAY SCALING below for why that distinction matters.
 // ============================================================================
 
-import { Canvas, Rect, FabricImage } from 'fabric';
+import { Canvas, Rect, FabricImage, Gradient } from 'fabric';
 import { buildSceneHtml, collectAssetCopies } from './bake.js';
 import { applyChromaKey } from './chromakey.js';
 import { cropImageData, padImageData } from './croppad.js';
@@ -23,6 +23,8 @@ import { applySharpen } from './sharpen.js';
 import { applyVignette } from './vignette.js';
 import { PLATFORM_ICONS, platformIconSvg } from './popup-slide-icons.js';
 import { parseSlidesText, slidesToPlaintext, evalConfig, legacyConfigToPopupSlideProps } from './popup-slide-import.js';
+import { gradientCoordsForAngle } from './gradient.js';
+import { STARTER_TEMPLATES } from './starter-kit/manifest.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -67,7 +69,12 @@ function uid() {
 // ---- ITEM DEFAULTS ------------------------------------------------------------
 function defaultPropsFor(type) {
   if (type === 'frame') {
-    return { strokeColor: '#7c5cff', strokeWidth: 3, cornerRadius: 12, fillEnabled: false, fillColor: '#0a0a12' };
+    return {
+      strokeColor: '#7c5cff', strokeWidth: 3, cornerRadius: 12,
+      fillEnabled: false, fillColor: '#0a0a12',
+      fillType: 'solid', // 'solid' | 'gradient'
+      gradientFrom: '#7c5cff', gradientTo: '#0a0a12', gradientAngle: 135,
+    };
   }
   if (type === 'image') {
     return { sourcePath: '' };
@@ -108,6 +115,20 @@ async function createProject(canvasWidth, canvasHeight) {
   await openWorkspace();
   await saveProject();
   setStatus('New project created in ' + folder, 'ok');
+}
+
+// ---- STARTER KIT --------------------------------------------------------
+// Always creates a brand-new project (never overwrites an already-open
+// one) in a folder the user picks, using the template's own canvas size —
+// see starter-kit/manifest.js for what each template actually contains.
+async function createProjectFromTemplate(template) {
+  const folder = await invoke('pick_project_folder');
+  if (!folder) return;
+  project = template.buildProject();
+  projectFolder = folder;
+  await openWorkspace();
+  await saveProject();
+  setStatus(`Starter project "${template.label}" created in ${folder}. Try it out, then click "Bake Browser Source…" above when you're ready to export and use it!`, 'ok');
 }
 
 async function openProject() {
@@ -284,6 +305,22 @@ async function addFabricObjectForItem(item) {
   return obj;
 }
 
+function frameFillValue(p) {
+  if (!p.fillEnabled) return 'transparent';
+  if (p.fillType === 'gradient') {
+    return new Gradient({
+      type: 'linear',
+      gradientUnits: 'percentage',
+      coords: gradientCoordsForAngle(p.gradientAngle),
+      colorStops: [
+        { offset: 0, color: p.gradientFrom },
+        { offset: 1, color: p.gradientTo },
+      ],
+    });
+  }
+  return p.fillColor;
+}
+
 function createRectFabricObject(item) {
   const isPopupSlide = item.type === 'popup-slide';
   const p = item.props;
@@ -296,9 +333,7 @@ function createRectFabricObject(item) {
     scaleX: 1,
     scaleY: 1,
     strokeUniform: true,
-    fill: isPopupSlide
-      ? 'rgba(124,92,255,0.15)'
-      : (p.fillEnabled ? p.fillColor : 'transparent'),
+    fill: isPopupSlide ? 'rgba(124,92,255,0.15)' : frameFillValue(p),
     stroke: isPopupSlide ? '#a594ff' : p.strokeColor,
     strokeWidth: isPopupSlide ? 2 : p.strokeWidth,
     strokeDashArray: isPopupSlide ? [8, 5] : null,
@@ -437,6 +472,8 @@ function renderPropertiesPanel() {
 
 function renderFrameProperties(item, body) {
   const p = item.props;
+  if (!p.fillType) p.fillType = 'solid'; // tolerate projects saved before gradients existed
+
   body.innerHTML = `
     <div class="field"><label>Stroke color</label><input type="color" id="pf-strokeColor" value="${p.strokeColor}"></div>
     <div class="field"><label>Stroke width (px)</label><input type="number" id="pf-strokeWidth" min="0" value="${p.strokeWidth}"></div>
@@ -444,17 +481,70 @@ function renderFrameProperties(item, body) {
     <div class="field">
       <label><input type="checkbox" id="pf-fillEnabled" ${p.fillEnabled ? 'checked' : ''}> Fill</label>
     </div>
-    <div class="field"><label>Fill color</label><input type="color" id="pf-fillColor" value="${p.fillColor}"></div>
+    <div id="pf-fillControls"></div>
   `;
-  const apply = async () => {
+
+  const fillControlsHost = document.getElementById('pf-fillControls');
+
+  async function apply() {
     p.strokeColor = document.getElementById('pf-strokeColor').value;
     p.strokeWidth = parseFloat(document.getElementById('pf-strokeWidth').value) || 0;
     p.cornerRadius = parseFloat(document.getElementById('pf-cornerRadius').value) || 0;
     p.fillEnabled = document.getElementById('pf-fillEnabled').checked;
-    p.fillColor = document.getElementById('pf-fillColor').value;
+    const fillTypeEl = document.getElementById('pf-fillType');
+    if (fillTypeEl) p.fillType = fillTypeEl.value;
+    const fillColorEl = document.getElementById('pf-fillColor');
+    if (fillColorEl) p.fillColor = fillColorEl.value;
+    const gradientFromEl = document.getElementById('pf-gradientFrom');
+    if (gradientFromEl) p.gradientFrom = gradientFromEl.value;
+    const gradientToEl = document.getElementById('pf-gradientTo');
+    if (gradientToEl) p.gradientTo = gradientToEl.value;
+    const gradientAngleEl = document.getElementById('pf-gradientAngle');
+    if (gradientAngleEl) p.gradientAngle = parseFloat(gradientAngleEl.value) || 0;
     await refreshFabricObjectForItem(item.id);
-  };
-  body.querySelectorAll('input').forEach((el) => el.addEventListener('change', apply));
+  }
+
+  function renderFillControls() {
+    if (!p.fillEnabled) {
+      fillControlsHost.innerHTML = '';
+      return;
+    }
+    fillControlsHost.innerHTML = `
+      <div class="field">
+        <label for="pf-fillType">Fill type</label>
+        <select id="pf-fillType">
+          <option value="solid" ${p.fillType === 'solid' ? 'selected' : ''}>Solid color</option>
+          <option value="gradient" ${p.fillType === 'gradient' ? 'selected' : ''}>Gradient</option>
+        </select>
+      </div>
+      ${p.fillType === 'gradient' ? `
+        <div class="field-row">
+          <div class="field"><label>From</label><input type="color" id="pf-gradientFrom" value="${p.gradientFrom}"></div>
+          <div class="field"><label>To</label><input type="color" id="pf-gradientTo" value="${p.gradientTo}"></div>
+        </div>
+        <div class="field"><label>Angle (degrees, 0 = to top, 90 = to right)</label><input type="number" id="pf-gradientAngle" min="0" max="360" value="${p.gradientAngle}"></div>
+      ` : `
+        <div class="field"><label>Fill color</label><input type="color" id="pf-fillColor" value="${p.fillColor}"></div>
+      `}
+    `;
+    fillControlsHost.querySelectorAll('input, select').forEach((el) => el.addEventListener('change', onFillFieldChange));
+  }
+
+  async function onFillFieldChange(e) {
+    const needsRerender = e.target.id === 'pf-fillType';
+    await apply();
+    if (needsRerender) renderFillControls();
+  }
+
+  async function onBaseFieldChange(e) {
+    const needsRerender = e.target.id === 'pf-fillEnabled';
+    await apply();
+    if (needsRerender) renderFillControls();
+  }
+
+  renderFillControls();
+  ['pf-strokeColor', 'pf-strokeWidth', 'pf-cornerRadius', 'pf-fillEnabled']
+    .forEach((id) => document.getElementById(id).addEventListener('change', onBaseFieldChange));
 }
 
 function renderImageProperties(item, body) {
@@ -1504,6 +1594,35 @@ function wireNewProjectDialog() {
   });
 }
 
+// ---- STARTER KIT DIALOG -----------------------------------------------------
+function wireStarterKitDialog() {
+  const dialog = document.getElementById('starterKitDialog');
+  const templateSelect = document.getElementById('starterTemplate');
+  const descriptionEl = document.getElementById('starterTemplateDescription');
+
+  templateSelect.innerHTML = STARTER_TEMPLATES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('');
+
+  function updateDescription() {
+    const t = STARTER_TEMPLATES.find((t) => t.key === templateSelect.value);
+    descriptionEl.textContent = t ? t.description : '';
+  }
+  updateDescription();
+  templateSelect.addEventListener('change', updateDescription);
+
+  els.starterKitBtn.addEventListener('click', () => {
+    updateDescription();
+    dialog.showModal();
+  });
+  document.getElementById('cancelStarterKitBtn').addEventListener('click', () => dialog.close());
+
+  document.getElementById('createStarterProjectBtn').addEventListener('click', async () => {
+    const t = STARTER_TEMPLATES.find((t) => t.key === templateSelect.value);
+    if (!t) return;
+    dialog.close();
+    await createProjectFromTemplate(t);
+  });
+}
+
 // ---- BOOTSTRAP ----------------------------------------------------------------
 window.addEventListener('DOMContentLoaded', () => {
   els = {
@@ -1511,6 +1630,7 @@ window.addEventListener('DOMContentLoaded', () => {
     subtitle: document.getElementById('subtitle'),
     status: document.getElementById('status'),
     newProjectBtn: document.getElementById('newProjectBtn'),
+    starterKitBtn: document.getElementById('starterKitBtn'),
     openProjectBtn: document.getElementById('openProjectBtn'),
     importLegacyBtn: document.getElementById('importLegacyBtn'),
     saveProjectBtn: document.getElementById('saveProjectBtn'),
@@ -1527,6 +1647,7 @@ window.addEventListener('DOMContentLoaded', () => {
   };
 
   wireNewProjectDialog();
+  wireStarterKitDialog();
   wireChromaKeyDialog();
   wireCropDialog();
   wirePadDialog();

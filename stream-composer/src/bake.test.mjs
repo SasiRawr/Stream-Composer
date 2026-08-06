@@ -74,6 +74,21 @@ assert(html.includes('9146FF'), "the popup-slide item's platform-icon color reac
 assert(html.includes('assets/p1-slide2.png'), "the popup-slide item's custom-icon baked asset path reaches the output");
 assert(html.includes('loopForever'), 'the popup-slide animation engine is inlined into the output');
 
+// ---- buildSceneHtml: frame gradient fill ----
+const gradientProject = baseProject([{
+  id: 'g1', type: 'frame', x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0,
+  props: { strokeColor: '#fff', strokeWidth: 1, cornerRadius: 0, fillEnabled: true, fillType: 'gradient', gradientFrom: '#7c5cff', gradientTo: '#0a0a12', gradientAngle: 135 },
+}]);
+const gradientHtml = buildSceneHtml(gradientProject, {});
+assert(gradientHtml.includes('linear-gradient(135deg, #7c5cff, #0a0a12)'), `a gradient-filled frame emits a real CSS linear-gradient (got a match: ${gradientHtml.includes('linear-gradient(135deg, #7c5cff, #0a0a12)')})`);
+
+const solidProject = baseProject([{
+  id: 's1', type: 'frame', x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0,
+  props: { strokeColor: '#fff', strokeWidth: 1, cornerRadius: 0, fillEnabled: true, fillType: 'solid', fillColor: '#123456' },
+}]);
+const solidHtml = buildSceneHtml(solidProject, {});
+assert(solidHtml.includes('background:#123456;') && !solidHtml.includes('linear-gradient'), 'a solid-filled frame still emits a plain background color, not a gradient');
+
 // ---- buildSceneHtml: items sort by zIndex regardless of array order ----
 const outOfOrder = baseProject([
   { id: 'top', type: 'frame', x: 0, y: 0, width: 10, height: 10, rotation: 0, zIndex: 5,

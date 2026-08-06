@@ -30,10 +30,18 @@ function wrapperStyle(item) {
 
 // ---- FRAME ------------------------------------------------------------
 // A plain positioning guide / decorative border. Renders as a styled div,
-// nothing more — see props for what's configurable.
+// nothing more — see props for what's configurable. Gradient angle uses
+// the same convention CSS linear-gradient() already does (0deg = to top,
+// 90deg = to right, clockwise) — main.js's Fabric preview computes
+// matching coordinates from the same angle, so the editor and the baked
+// output agree on what a given angle looks like.
 function renderFrameItem(item) {
   const p = item.props;
-  const fill = p.fillEnabled ? p.fillColor : 'transparent';
+  const fill = !p.fillEnabled
+    ? 'transparent'
+    : p.fillType === 'gradient'
+      ? `linear-gradient(${p.gradientAngle}deg, ${p.gradientFrom}, ${p.gradientTo})`
+      : p.fillColor;
   const style = wrapperStyle(item) +
     `border:${p.strokeWidth}px solid ${p.strokeColor}; border-radius:${p.cornerRadius}px; background:${fill}; box-sizing:border-box;`;
   return { html: `<div class="item item-frame" style="${style}"></div>`, script: '' };
