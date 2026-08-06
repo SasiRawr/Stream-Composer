@@ -18,13 +18,25 @@ this project:
 
 ## Where things stand (2026-08-05)
 
-- `app/` ("Popup Slide Editor") — v0.1.0, human-tested, stable.
-- `scene-composer/` ("Scene Composer") — v0.9.0, 9 image-editing
-  features shipped (Chroma Key, Crop, Pad, Color Adjust, Outline, Blur,
-  Flip/Rotate, Sharpen, Vignette), not yet human-tested. The two
-  standalone modules planned for v0.8.0/v0.9.0 are both done — next up
-  is v1.0.0 (see below).
-- Two apps, two separate version numbers — this ends at v1.0.0 (see below).
+- `app/` ("Popup Slide Editor") — v0.1.0, human-tested, stable. Being
+  retired into `stream-composer/` as part of the v1.0.0 merge, currently
+  in progress (see below) — kept around as the tested fallback until
+  that merge is verified.
+- `stream-composer/` (renamed from `scene-composer/`/"Scene Composer" as
+  the first step of the v1.0.0 merge) — 9 image-editing features shipped
+  (Chroma Key, Crop, Pad, Color Adjust, Outline, Blur, Flip/Rotate,
+  Sharpen, Vignette). Core drag/resize/bake flow still not human-tested
+  — flagged as an open risk being carried into the merge, not resolved
+  by it. The two standalone modules planned for v0.8.0/v0.9.0 are both
+  done — v1.0.0 (see below) is now in progress.
+- **v1.0.0 merge status:** in progress. Shell consolidation (rename,
+  Tauri identity, Rust command port) done; capability-gap closing
+  (per-slide icons, plaintext mode, engine reconciliation), legacy
+  import, Overlay Asset Workflow, Starter Kit Wizard, and the
+  performance/stability pass are still ahead. See the detailed phased
+  plan for this merge if picking it back up mid-stream.
+- Two apps, two separate version numbers — this ends once v1.0.0 ships
+  (see below).
 
 ## v0.8.0 – v0.9.0: two more standalone modules
 
@@ -34,7 +46,13 @@ Same pattern as v0.2.0–v0.7.0: build, test, ship as separate releases.
 after the roadmap was first drafted):
 - **VTuber-style features — deferred, not scheduled.** Harvey's call:
   "no vtuber features later. not now." Don't pick this back up without
-  him raising it again.
+  him raising it again. **When it does get raised:** Harvey specifically
+  wants the option space to include PNGtuber/ENVtuber-style approaches
+  alongside full rigged-3D-model avatars, not just the latter — many
+  streamers don't have the budget or resources for a fully rigged 3D
+  model and camera-tracking setup, and PNGtuber/ENVtuber approaches are
+  a much lower barrier to entry. Noted 2026-08-05; scope this in
+  whenever VTuber features actually get explored, not before.
 - **Anything from the "validated next directions" list** (stinger/
   transition builder, chat+TTS overlay, asset library, template
   personalization) — that whole bucket is reserved *purely* for the

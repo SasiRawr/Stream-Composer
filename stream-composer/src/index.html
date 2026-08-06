@@ -3,19 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Scene Composer</title>
+  <title>Stream Composer</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
 <!--
   ============================================================================
-  SCENE COMPOSER
+  STREAM COMPOSER
   ============================================================================
   Build a whole stream layout by dragging/resizing items on a canvas sized
   to your real stream resolution, then "Bake" it into a single OBS Browser
-  Source. This is a separate app from the Popup Slide Editor (app/) —
-  see V2_ARCHITECTURE.md for how the two relate.
+  Source. As of v1.0.0 this is the one app — the standalone Popup Slide
+  Editor and Scene Composer apps that preceded it are retired in favor of
+  this merged suite; see V2_ARCHITECTURE.md and ROADMAP.md for the history.
 
   A "Frame" item is a positioning guide (for lining up your real OBS camera
   source, or as a decorative border) — it does NOT capture your webcam.
@@ -23,7 +24,7 @@
 -->
 
 <div class="topbar">
-  <h1>Scene Composer</h1>
+  <h1>Stream Composer</h1>
   <div class="topbar-actions">
     <button class="secondary" id="newProjectBtn" type="button">New Project…</button>
     <button class="secondary" id="openProjectBtn" type="button">Open Project…</button>

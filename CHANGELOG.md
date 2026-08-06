@@ -4,6 +4,30 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.0.0 — in progress (draft, not yet released)
+
+### Added (so far)
+- Repo consolidation: `scene-composer/` renamed to `stream-composer/`,
+  the surviving app going forward. `app/` (Popup Slide Editor) is being
+  folded in and will be removed once the merge is fully verified.
+- Merged Tauri identity: `productName: "Stream Composer"`, new
+  identifier `com.thenerdybox.streamcomposer` (supersedes both
+  `com.thenerdybox.popupslideeditor` and `com.thenerdybox.scenecomposer`
+  — installing v1.0.0 will **not** upgrade either old app in place;
+  uninstall both before installing).
+- `preview_overlay` Tauri command ported over from the old Popup Slide
+  Editor (cache-busted live preview in the OS browser).
+
+### Still ahead before this ships
+- Closing the `popup-slide` item type's capability gap (per-slide icons,
+  plaintext editing mode) and reconciling the two existing popup-slide
+  animation-engine implementations into one.
+- Legacy project import (bringing old `settings.js`-based campaigns into
+  the unified `project.json` model).
+- Overlay Asset Workflow improvements and the Starter Kit Wizard.
+- A full human-testing + performance/stability pass (Scene Composer's
+  core canvas flow has never been human-tested, even pre-merge).
+
 ## v0.9.0 — 2026-08-05 (Scene Composer)
 
 ### Added

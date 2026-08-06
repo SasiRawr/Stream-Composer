@@ -1,8 +1,7 @@
 /* ============================================================================
-   Scene Composer styles
+   Stream Composer styles
    ============================================================================
-   Same dark/violet look the Popup Slide Editor's app/ uses, for visual consistency
-   between the two apps even though they're separate codebases.
+   The dark/violet TheNerdyBox brand theme this app has used since Milestone 1.
    ========================================================================= */
 
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=JetBrains+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap');

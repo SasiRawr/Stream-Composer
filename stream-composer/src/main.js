@@ -1,10 +1,9 @@
 // ============================================================================
-// Scene Composer — app logic
+// Stream Composer — app logic
 // ============================================================================
 // A Project is { canvasWidth, canvasHeight, items: [...] }, saved as a real
 // file (project.json) via Tauri's fs commands (see src-tauri/src/lib.rs) —
-// same "real save, not browser storage" principle as the Popup Slide
-// Editor's app/.
+// real save, not browser storage.
 //
 // Each item: { id, type, x, y, width, height, rotation, zIndex, props }.
 // x/y/width/height/rotation are always stored in REAL stream-resolution
@@ -114,7 +113,7 @@ async function openProject() {
   const projectPath = joinPath(folder, 'project.json');
   const exists = await invoke('file_exists', { path: projectPath });
   if (!exists) {
-    setStatus('That folder doesn\'t have a project.json — not a Scene Composer project.', 'err');
+    setStatus('That folder doesn\'t have a project.json — not a Stream Composer project.', 'err');
     return;
   }
   const text = await invoke('read_text_file', { path: projectPath });

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Scene Composer",
+  "productName": "Stream Composer",
   "version": "0.9.0",
-  "identifier": "com.thenerdybox.scenecomposer",
+  "identifier": "com.thenerdybox.streamcomposer",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://127.0.0.1:1420",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Scene Composer",
+        "title": "Stream Composer",
         "width": 1280,
         "height": 860
       }

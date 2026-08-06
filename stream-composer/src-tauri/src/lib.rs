@@ -1,15 +1,17 @@
 // ============================================================================
-// Scene Composer — Rust backend
+// Stream Composer — Rust backend
 // ============================================================================
-// Same small-explicit-commands pattern as the Popup Slide Editor's app/src-tauri —
-// see that file's comments for the full reasoning. This one adds a couple
-// of binary-file commands on top, since Scene Composer needs to import
+// Same small-explicit-commands pattern this project has used from the start
+// (originally in the standalone Popup Slide Editor's app/src-tauri, now
+// merged in here as of v1.0.0). This one adds a couple of binary-file
+// commands on top of the original set, since the canvas needs to import
 // arbitrary image files (logos, graphics) and copy them into a baked
 // project's assets/ folder.
 // ============================================================================
 
 use base64::Engine;
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 
 /// Opens the "choose a folder" dialog. Used both for "open an existing
 /// project" and "pick where to save a new project."
@@ -77,6 +79,22 @@ fn file_exists(path: String) -> bool {
     std::path::Path::new(&path).is_file()
 }
 
+/// Opens a URL with whatever the operating system's default browser is.
+/// Used for single-item live preview (e.g. previewing a popup-slide item
+/// without doing a full Bake first): a temp scene.html is written, then
+/// opened here. Ported from the standalone Popup Slide Editor's
+/// preview_overlay command, unchanged.
+///
+/// Expects a full `file://...` URL with a cache-busting `?t=...` on the
+/// end, so a browser that already has a stale preview tab open is forced
+/// to load fresh instead of just re-focusing that old tab.
+#[tauri::command]
+fn preview_overlay(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|err| err.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -90,6 +108,7 @@ pub fn run() {
             read_binary_file_base64,
             write_binary_file,
             file_exists,
+            preview_overlay,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
