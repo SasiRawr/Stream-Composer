@@ -22,7 +22,7 @@ import { applyFlip, applyRotate } from './transform.js';
 import { applySharpen } from './sharpen.js';
 import { applyVignette } from './vignette.js';
 import { PLATFORM_ICONS, platformIconSvg } from './popup-slide-icons.js';
-import { parseSlidesText, slidesToPlaintext } from './popup-slide-import.js';
+import { parseSlidesText, slidesToPlaintext, evalConfig, legacyConfigToPopupSlideProps } from './popup-slide-import.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -116,7 +116,14 @@ async function openProject() {
   const projectPath = joinPath(folder, 'project.json');
   const exists = await invoke('file_exists', { path: projectPath });
   if (!exists) {
-    setStatus('That folder doesn\'t have a project.json — not a Stream Composer project.', 'err');
+    const legacySettingsPath = joinPath(folder, 'settings.js');
+    const hasLegacySettings = await invoke('file_exists', { path: legacySettingsPath });
+    if (hasLegacySettings) {
+      setStatus('That folder doesn\'t have a project.json, but it looks like an old popup-slide project (it has a settings.js) — importing it now.', 'ok');
+      await startLegacyImportFromFolder(folder);
+    } else {
+      setStatus('That folder doesn\'t have a project.json — not a Stream Composer project.', 'err');
+    }
     return;
   }
   const text = await invoke('read_text_file', { path: projectPath });
@@ -131,6 +138,85 @@ async function saveProject() {
   const projectPath = joinPath(projectFolder, 'project.json');
   await invoke('write_text_file', { path: projectPath, contents: JSON.stringify(project, null, 2) });
   setStatus('Saved to ' + projectPath, 'ok');
+}
+
+// ---- LEGACY PROJECT IMPORT --------------------------------------------------
+// Brings an old v1/app-style settings.js-based popup-slide campaign into
+// this app's project.json model, as a new project with one popup-slide
+// item pre-filled from the legacy content. The legacy folder is NEVER
+// written to — this always saves into a separate, freshly-picked
+// destination folder. See popup-slide-import.js for the pure mapping logic.
+//
+// Reuses the New Project dialog for picking the new project's canvas size
+// (defaulting to 640x220, the v1 convention) rather than a separate dialog —
+// `pendingLegacyImport` is how wireNewProjectDialog's Create handler knows
+// to seed the new project from imported content instead of starting blank.
+let pendingLegacyImport = null;
+
+async function startLegacyImportFromFolder(legacyFolder) {
+  const settingsPath = joinPath(legacyFolder, 'settings.js');
+  let text;
+  try {
+    text = await invoke('read_text_file', { path: settingsPath });
+  } catch (err) {
+    setStatus('Couldn\'t read settings.js: ' + err, 'err');
+    return;
+  }
+
+  const CONFIG = evalConfig(text);
+  if (!CONFIG) {
+    setStatus('settings.js was read, but no CONFIG object was found inside it.', 'err');
+    return;
+  }
+
+  const popupSlideProps = legacyConfigToPopupSlideProps(CONFIG);
+
+  // Bare custom-icon filenames are relative to the LEGACY folder (that's
+  // where the old standalone editor expected them to sit) — resolve each
+  // to a real absolute path now. A missing file doesn't block the whole
+  // import; that one slide just falls back to no icon, with a warning.
+  for (const slide of popupSlideProps.slides) {
+    if (slide.iconMode === 'custom' && slide.customAssetPath) {
+      const candidate = joinPath(legacyFolder, slide.customAssetPath);
+      const found = await invoke('file_exists', { path: candidate });
+      if (found) {
+        slide.customAssetPath = candidate;
+      } else {
+        setStatus(`Warning: couldn't find "${slide.customAssetPath}" next to settings.js — that slide's icon was reset to none.`, 'err');
+        slide.iconMode = 'none';
+        delete slide.customAssetPath;
+      }
+    }
+  }
+
+  pendingLegacyImport = popupSlideProps;
+  document.getElementById('resolutionPreset').value = '640x220';
+  document.getElementById('customResolutionRow').hidden = true;
+  document.getElementById('newProjectDialog').showModal();
+  setStatus(`Read ${popupSlideProps.slides.length} slide(s) from ${settingsPath} — pick a canvas size and a NEW destination folder to finish importing (the original files are never touched).`, 'ok');
+}
+
+async function importLegacyProject() {
+  const legacyFolder = await invoke('pick_project_folder');
+  if (!legacyFolder) return;
+  const settingsPath = joinPath(legacyFolder, 'settings.js');
+  const hasSettings = await invoke('file_exists', { path: settingsPath });
+  if (!hasSettings) {
+    setStatus('That folder doesn\'t have a settings.js in it — not a legacy popup-slide project.', 'err');
+    return;
+  }
+  await startLegacyImportFromFolder(legacyFolder);
+}
+
+async function createProjectFromImport(canvasWidth, canvasHeight, popupSlideProps) {
+  const folder = await invoke('pick_project_folder');
+  if (!folder) return;
+  project = newProjectData(canvasWidth, canvasHeight);
+  projectFolder = folder;
+  await openWorkspace();
+  await addItem('popup-slide', popupSlideProps);
+  await saveProject();
+  setStatus('Imported legacy project into ' + folder, 'ok');
 }
 
 function joinPath(folder, filename) {
@@ -1303,8 +1389,14 @@ function wireNewProjectDialog() {
   const preset = document.getElementById('resolutionPreset');
   const customRow = document.getElementById('customResolutionRow');
 
-  els.newProjectBtn.addEventListener('click', () => dialog.showModal());
-  document.getElementById('cancelNewProjectBtn').addEventListener('click', () => dialog.close());
+  els.newProjectBtn.addEventListener('click', () => {
+    pendingLegacyImport = null; // starting a blank project cancels any pending import
+    dialog.showModal();
+  });
+  document.getElementById('cancelNewProjectBtn').addEventListener('click', () => {
+    pendingLegacyImport = null;
+    dialog.close();
+  });
 
   preset.addEventListener('change', () => {
     customRow.hidden = preset.value !== 'custom';
@@ -1319,7 +1411,13 @@ function wireNewProjectDialog() {
       [width, height] = preset.value.split('x').map((n) => parseInt(n, 10));
     }
     dialog.close();
-    await createProject(width, height);
+    if (pendingLegacyImport) {
+      const importedProps = pendingLegacyImport;
+      pendingLegacyImport = null;
+      await createProjectFromImport(width, height, importedProps);
+    } else {
+      await createProject(width, height);
+    }
   });
 }
 
@@ -1331,6 +1429,7 @@ window.addEventListener('DOMContentLoaded', () => {
     status: document.getElementById('status'),
     newProjectBtn: document.getElementById('newProjectBtn'),
     openProjectBtn: document.getElementById('openProjectBtn'),
+    importLegacyBtn: document.getElementById('importLegacyBtn'),
     saveProjectBtn: document.getElementById('saveProjectBtn'),
     bakeBtn: document.getElementById('bakeBtn'),
     addFrameBtn: document.getElementById('addFrameBtn'),
@@ -1352,6 +1451,7 @@ window.addEventListener('DOMContentLoaded', () => {
   wireSharpenDialog();
   wireVignetteDialog();
   els.openProjectBtn.addEventListener('click', openProject);
+  els.importLegacyBtn.addEventListener('click', importLegacyProject);
   els.saveProjectBtn.addEventListener('click', saveProject);
   els.bakeBtn.addEventListener('click', bakeProject);
   els.addFrameBtn.addEventListener('click', () => addItem('frame'));
