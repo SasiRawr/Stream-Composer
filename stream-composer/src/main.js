@@ -231,6 +231,9 @@ async function openWorkspace() {
   els.bakeBtn.disabled = false;
   els.subtitle.textContent = projectFolder;
   els.canvasSizeLabel.textContent = project.canvasWidth + ' x ' + project.canvasHeight + ' (real stream resolution)';
+  updateBakeButtonLabels();
+  els.bakeResultActions.hidden = true; // stale from whatever project was open before, if any
+  lastBakeInfo = null;
 
   displayScale = computeDisplayScale(project.canvasWidth, project.canvasHeight);
   const displayWidth = Math.round(project.canvasWidth * displayScale);
@@ -1218,7 +1221,10 @@ function renderPopupSlideProperties(item, body) {
       </select>
     </div>
     <div id="pf-slideContent"></div>
+    <button class="secondary block" id="pf-previewSlide" type="button" title="Preview just this item in your browser, without doing a full Bake">Preview…</button>
   `;
+
+  document.getElementById('pf-previewSlide').addEventListener('click', () => previewItem(item));
 
   const contentHost = document.getElementById('pf-slideContent');
 
@@ -1353,30 +1359,107 @@ function escapeHtml(s) {
 }
 
 // ---- BAKE -----------------------------------------------------------------
-async function bakeProject() {
-  if (!project || !projectFolder) return;
-  const outputFolder = await invoke('pick_project_folder');
-  if (!outputFolder) return;
+// project.lastBakeFolder remembers where this project was last baked to
+// (part of the saved project.json, so it survives close/reopen), so a
+// repeat bake — the common case while iterating on a design — doesn't
+// need to re-pick the same folder every time. bakeNewFolderBtn is the
+// escape hatch for baking somewhere else instead.
+let lastBakeInfo = null; // { path, width, height } for the "copy instructions" action
 
-  const assetCopies = collectAssetCopies(project);
+async function copyAssetsAndBuildScene(outputFolder, projectOverride) {
+  const targetProject = projectOverride || project;
+  const assetCopies = collectAssetCopies(targetProject);
   const assetPathsById = {};
   for (const copy of assetCopies) {
-    try {
-      const base64 = await invoke('read_binary_file_base64', { path: copy.sourcePath });
-      const destPath = joinPath(outputFolder, copy.destRelativePath.replace(/\//g, sepFor(outputFolder)));
-      await invoke('write_binary_file', { path: destPath, base64Data: base64 });
-      assetPathsById[copy.itemId] = copy.destRelativePath;
-    } catch (err) {
-      setStatus('Couldn\'t copy an image asset while baking: ' + err, 'err');
-      return;
-    }
+    const base64 = await invoke('read_binary_file_base64', { path: copy.sourcePath });
+    const destPath = joinPath(outputFolder, copy.destRelativePath.replace(/\//g, sepFor(outputFolder)));
+    await invoke('write_binary_file', { path: destPath, base64Data: base64 });
+    assetPathsById[copy.itemId] = copy.destRelativePath;
+  }
+  return buildSceneHtml(targetProject, assetPathsById);
+}
+
+function updateBakeButtonLabels() {
+  const hasLastFolder = !!(project && project.lastBakeFolder);
+  els.bakeBtn.textContent = hasLastFolder ? 'Bake (same folder as last time)…' : 'Bake Browser Source…';
+  els.bakeNewFolderBtn.hidden = !hasLastFolder;
+}
+
+async function bakeProject(forceNewFolder) {
+  if (!project || !projectFolder) return;
+
+  let outputFolder = !forceNewFolder && project.lastBakeFolder ? project.lastBakeFolder : null;
+  if (!outputFolder) {
+    outputFolder = await invoke('pick_project_folder');
+    if (!outputFolder) return;
   }
 
-  const html = buildSceneHtml(project, assetPathsById);
+  let html;
+  try {
+    html = await copyAssetsAndBuildScene(outputFolder);
+  } catch (err) {
+    setStatus('Couldn\'t copy an image asset while baking: ' + err, 'err');
+    return;
+  }
+
   const scenePath = joinPath(outputFolder, 'scene.html');
   await invoke('write_text_file', { path: scenePath, contents: html });
+
+  project.lastBakeFolder = outputFolder;
+  await saveProject();
+  updateBakeButtonLabels();
+
+  lastBakeInfo = { path: scenePath, width: project.canvasWidth, height: project.canvasHeight };
+  els.bakeResultActions.hidden = false;
+
   setStatus('Baked to ' + scenePath + ' — add this as an OBS Browser Source, ' +
     project.canvasWidth + 'x' + project.canvasHeight + '.', 'ok');
+}
+
+function obsSetupInstructions() {
+  if (!lastBakeInfo) return '';
+  return `OBS Browser Source setup:\n` +
+    `1. Add a "Browser Source"\n` +
+    `2. Check "Local file" and browse to:\n   ${lastBakeInfo.path}\n` +
+    `3. Set Width = ${lastBakeInfo.width}, Height = ${lastBakeInfo.height}\n` +
+    `4. Leave "Shutdown source when not visible" unchecked`;
+}
+
+// ---- SINGLE-ITEM PREVIEW ----------------------------------------------------
+// Lets a popup-slide item be checked in a real browser without doing a
+// full Bake first (which writes into the project folder and copies every
+// asset) — builds a synthetic one-item project through the same
+// buildSceneHtml() bake.js already uses, writes it to a temp file next to
+// the project, and opens it via the same cache-busted preview_overlay
+// trick the standalone Popup Slide Editor used to prove out.
+async function previewItem(item) {
+  if (!projectFolder) return;
+  // Writes into a dedicated .preview/ subfolder, never into the real
+  // bake output folder — previewing shouldn't touch or pollute a real
+  // Bake's assets/scene.html.
+  const previewFolder = joinPath(projectFolder, '.preview');
+  const syntheticProject = { canvasWidth: item.width, canvasHeight: item.height, items: [{ ...item, x: 0, y: 0 }] };
+  let html;
+  try {
+    html = await copyAssetsAndBuildScene(previewFolder, syntheticProject);
+  } catch (err) {
+    setStatus('Couldn\'t prepare the preview: ' + err, 'err');
+    return;
+  }
+  const previewPath = joinPath(previewFolder, 'preview-' + item.id + '.html');
+  try {
+    await invoke('write_text_file', { path: previewPath, contents: html });
+    const url = pathToFileUrl(previewPath) + '?t=' + Date.now();
+    await invoke('preview_overlay', { url });
+  } catch (err) {
+    setStatus('Couldn\'t open the preview: ' + err, 'err');
+  }
+}
+
+function pathToFileUrl(filePath) {
+  const normalized = filePath.replace(/\\/g, '/');
+  const withLeadingSlash = normalized.startsWith('/') ? normalized : '/' + normalized;
+  return 'file://' + encodeURI(withLeadingSlash);
 }
 
 function sepFor(folder) {
@@ -1439,6 +1522,8 @@ window.addEventListener('DOMContentLoaded', () => {
     fabricCanvasEl: document.getElementById('fabricCanvas'),
     propertiesBody: document.getElementById('propertiesBody'),
     deleteItemBtn: document.getElementById('deleteItemBtn'),
+    bakeNewFolderBtn: document.getElementById('bakeNewFolderBtn'),
+    bakeResultActions: document.getElementById('bakeResultActions'),
   };
 
   wireNewProjectDialog();
@@ -1453,7 +1538,16 @@ window.addEventListener('DOMContentLoaded', () => {
   els.openProjectBtn.addEventListener('click', openProject);
   els.importLegacyBtn.addEventListener('click', importLegacyProject);
   els.saveProjectBtn.addEventListener('click', saveProject);
-  els.bakeBtn.addEventListener('click', bakeProject);
+  els.bakeBtn.addEventListener('click', () => bakeProject(false));
+  els.bakeNewFolderBtn.addEventListener('click', () => bakeProject(true));
+  document.getElementById('copyObsInstructionsBtn').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(obsSetupInstructions());
+      setStatus('OBS setup instructions copied to clipboard.', 'ok');
+    } catch (err) {
+      setStatus('Couldn\'t copy to clipboard: ' + err, 'err');
+    }
+  });
   els.addFrameBtn.addEventListener('click', () => addItem('frame'));
   els.addImageBtn.addEventListener('click', addImageItem);
   els.addPopupSlideBtn.addEventListener('click', () => addItem('popup-slide'));

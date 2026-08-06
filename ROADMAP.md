@@ -32,10 +32,11 @@ this project:
 - **v1.0.0 merge status:** in progress. Shell consolidation (rename,
   Tauri identity, Rust command port) done; `popup-slide` capability-gap
   closing (per-slide icons, plaintext mode, engine reconciliation into
-  one source of truth) done; legacy project import done. Overlay Asset
-  Workflow, Starter Kit Wizard, and the performance/stability pass are
-  still ahead. See the detailed phased plan for this merge if picking
-  it back up mid-stream.
+  one source of truth) done; legacy project import done; Overlay Asset
+  Workflow improvements (remembered bake folder, copy-instructions
+  action, single-item preview) done. Starter Kit Wizard and the
+  performance/stability pass are still ahead. See the detailed phased
+  plan for this merge if picking it back up mid-stream.
 - Two apps, two separate version numbers — this ends once v1.0.0 ships
   (see below).
 
@@ -108,6 +109,14 @@ standalone module/release — same incremental pattern as v0.2.0–v0.9.0 —
    the research doc, using free browser-native `speechSynthesis`.
 3. Asset library / reusable components.
 4. Template personalization (re-color/re-text without a full re-edit).
+5. Real OBS WebSocket automation for the Overlay Asset Workflow (auto-
+   adding/updating the Browser Source in a running OBS instance, instead
+   of the user pointing OBS at the baked scene.html by hand) — deferred
+   out of v1.0.0's Overlay Asset Workflow pass (2026-08-06) since it's a
+   meaningfully bigger scope/risk surface (a live connection to a
+   separate running app) than the rest of that pass, which stayed to
+   in-app improvements only (remembered bake folder, one-click OBS setup
+   instructions, single-item preview).
 
 **Version budget (Harvey's explicit constraint, 2026-08-05):** prefer to
 land this whole series **under v1.10.0**; **v1.15.0 is the absolute

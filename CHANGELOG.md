@@ -29,9 +29,16 @@ download any version.
   slide campaign into a new project.json project, without ever touching
   the original files. Auto-offered when opening a folder that turns out
   to be an old-style project instead of just erroring.
+- **Overlay Asset Workflow improvements**: Bake now remembers the last
+  folder it wrote to, so re-baking while iterating on a design doesn't
+  re-prompt for a folder every time ("Bake to new folder…" is there when
+  you actually want to change it). A "Copy OBS setup instructions" action
+  appears after a successful bake. New **Preview…** button on popup-slide
+  items previews just that item in your browser without doing a full
+  bake first.
 
 ### Still ahead before this ships
-- Overlay Asset Workflow improvements and the Starter Kit Wizard.
+- The Starter Kit Wizard.
 - A full human-testing + performance/stability pass (Scene Composer's
   core canvas flow has never been human-tested, even pre-merge).
 
