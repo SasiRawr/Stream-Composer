@@ -29,14 +29,23 @@ this project:
   — flagged as an open risk being carried into the merge, not resolved
   by it. The two standalone modules planned for v0.8.0/v0.9.0 are both
   done — v1.0.0 (see below) is now in progress.
-- **v1.0.0 merge status:** in progress. Shell consolidation (rename,
-  Tauri identity, Rust command port) done; `popup-slide` capability-gap
-  closing (per-slide icons, plaintext mode, engine reconciliation into
-  one source of truth) done; legacy project import done; Overlay Asset
-  Workflow improvements (remembered bake folder, copy-instructions
-  action, single-item preview) done. Starter Kit Wizard and the
-  performance/stability pass are still ahead. See the detailed phased
-  plan for this merge if picking it back up mid-stream.
+- **v1.0.0 merge status:** every buildable phase is done — shell
+  consolidation, `popup-slide` capability-gap closing (per-slide icons,
+  plaintext mode, engine reconciliation into one source of truth),
+  legacy project import, Overlay Asset Workflow improvements (remembered
+  bake folder, copy-instructions action, single-item preview), and the
+  Starter Kit Wizard (3 templates + gradient fill for frames) are all
+  built, unit-tested where the logic is pure, and verified to compile
+  and launch cleanly. **The one thing left is the human-testing +
+  performance/stability pass** — real click-through of the Fabric
+  canvas (drag/resize/rotate/z-order), every dialog including the new
+  ones, a real Bake tested in an actual OBS install, and the gradient
+  picker's visual output — none of which can be done without a human at
+  the keyboard (no GUI-automation tool covers this app's native
+  window). See the detailed phased plan for exactly what to click
+  through; once that's clean, cutting the v1.0.0 release itself is
+  pure mechanics (version bump, build, tag, release) — nothing else
+  blocks it.
 - Two apps, two separate version numbers — this ends once v1.0.0 ships
   (see below).
 

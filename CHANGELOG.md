@@ -36,11 +36,20 @@ download any version.
   appears after a successful bake. New **Preview…** button on popup-slide
   items previews just that item in your browser without doing a full
   bake first.
+- **Starter Kit** — a "Starter Kit…" button offering 3 ready-made
+  templates (Popup Badge; Gradient Border; Webcam Frame + Badge) as a
+  starting point instead of a blank canvas.
+- **Gradient fill for `frame` items** — a real feature, not just wizard
+  content: any frame can use a two-color gradient fill (pick the colors
+  and the angle) instead of a flat color.
 
 ### Still ahead before this ships
-- The Starter Kit Wizard.
-- A full human-testing + performance/stability pass (Scene Composer's
-  core canvas flow has never been human-tested, even pre-merge).
+- A full human-testing + performance/stability pass — every feature
+  above is built, unit-tested where the logic is pure, and verified to
+  build/launch cleanly, but the actual click-through (Fabric canvas
+  drag/resize/rotate, every new dialog, a real bake tested in OBS) has
+  **not** been done by a human yet. This is the one remaining gate
+  before v1.0.0 can be tagged — see ROADMAP.md.
 
 ## v0.9.0 — 2026-08-05 (Scene Composer)
 
