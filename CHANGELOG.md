@@ -1,10 +1,18 @@
 # Changelog
 
-All notable changes to Stream Composer are documented here. See the
+All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
 ## v1.2.0 — 2026-08-06 (pre-release, pending verification)
+
+### Changed
+- **Renamed to "Stream Composer Suite"** (from "Stream Composer") —
+  clearer about what it actually is: a suite of integrated tools, not
+  a single design tool. Applied before this version was ever promoted
+  to a real release, so no one has to deal with a mid-flight rename —
+  the technical installer identity is unchanged, so future updates
+  still install in place as normal.
 
 ### Added
 - **+ Chat + TTS Overlay** item — connects to your live chat (Twitch and

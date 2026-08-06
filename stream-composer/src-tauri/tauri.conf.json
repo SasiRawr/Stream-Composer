@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Stream Composer",
+  "productName": "Stream Composer Suite",
   "version": "1.2.0",
   "identifier": "com.thenerdybox.streamcomposer",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Stream Composer",
+        "title": "Stream Composer Suite",
         "width": 1280,
         "height": 860
       }

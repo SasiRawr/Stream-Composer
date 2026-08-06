@@ -1,6 +1,6 @@
 # Roadmap
 
-The strategic plan for Stream Composer, agreed 2026-08-05. This is a
+The strategic plan for Stream Composer Suite, agreed 2026-08-05. This is a
 living document — update it as scope shifts, don't just leave it stale
 once a milestone ships.
 
@@ -176,7 +176,7 @@ standalone module/release — same incremental pattern as v0.2.0–v0.9.0 —
    rejected — YouTube needs an API key (a shared embedded key would
    create real abuse/quota-exhaustion risk across every user of the
    app, so **when YouTube support is built, it's bring-your-own-key,
-   with an explicit disclaimer that Stream Composer doesn't supply keys
+   with an explicit disclaimer that Stream Composer Suite doesn't supply keys
    or offer direct account linking for it — Harvey's call, settled
    ahead of time**), TikTok needs a backend this app doesn't have,
    Trovo is shutting down entirely (June 30, 2026, regardless of API
@@ -232,9 +232,63 @@ features to fold into later minor/major releases — this roadmap is a
 direction, not a finished spec. Update it as real usage and further
 research reshape priorities.
 
+### Long-term direction: from "design tool" to "runs alongside your stream" (noted 2026-08-06)
+
+Harvey's stated long-term vision, worth keeping in view for how v2.0.0+
+gets scoped, not something to act on now: Stream Composer Suite eventually
+becoming less of a "design it, export it, close it" tool and more of a
+lightweight companion app that **runs alongside OBS/Streamlabs while
+you're live** — modules feeding live sources into OBS the way some paid
+overlay-provider desktop apps already do, with on-the-fly editing and
+management (not just one-time export), potentially including a built-in
+chat moderation bot. Explicit requirement that comes with this: the app
+would have to become **very lightweight** to run continuously alongside
+a stream, not just at design time.
+
+This is exactly the direction the v1.2.0 Chat + TTS Overlay item already
+points toward (a continuously-running, live-connected overlay module,
+not a one-shot export) — if this vision holds, expect more future
+modules to follow that same "always-running item type" shape rather
+than the Stinger Builder's "one-shot export tool" shape.
+
+**Brainstormed feature candidates noted for later** (not scoped, not
+started):
+- A "chat companion" overlay — small animated critters (foxes, cats,
+  etc.) at the bottom of the screen, one per active chatter, with a
+  speech bubble popping up from the critter's mouth when that person
+  sends a message. Harvey saw this on another streamer's overlay and
+  noted a paid Steam app exists specifically for this — validates the
+  "people already pay for this, we could give it away free" thesis.
+  Architecturally close to the existing Chat + TTS Overlay item (same
+  underlying chat-connection/message-event plumbing) — likely an
+  extension of that item type or a closely related one, not a
+  from-scratch feature, when it gets picked up.
+- VTuber features (still explicitly deferred, not scheduled — see the
+  existing deferral note above): Harvey saved a reference screenshot of
+  a fully-rigged, interactive VTuber model in a local `Examples` folder
+  as a visual reference for "the direction" when this eventually gets
+  explored. Combine with the existing PNGtuber/ENVtuber note already on
+  file — full rigged 3D models are one end of the spectrum this
+  reference represents, not the only option to build toward.
+
 ## Standing rule, reconfirmed
 
 Everything ships free. The optional hosting idea above is the one
 explicitly-flagged exception under consideration for the future, and even
 that stays opt-in on top of a fully-functional free local product — never
 a paywall on something already free. See the free-tier directive.
+
+**Never store user data on TheNerdyBox infrastructure** (Harvey's
+explicit policy, stated 2026-08-06): no user files, API keys, tokens, or
+credentials of any kind get saved to any server this project controls —
+even if that means passing up an easier "hosted" version of a feature.
+This is a real design constraint, not just a preference: it's a large
+part of why the app is architected local-first (see the "self-hosted /
+runs locally first" north star already established for v2.0.0), and it
+directly informed why v1.2.0's Chat + TTS Overlay never asks a user for
+platform credentials the app itself would hold (Twitch/Kick both connect
+anonymously; YouTube's future bring-your-own-key design means the
+key lives only on the user's own machine, never touches anything we
+run). The one explicitly-carved-out exception: a future Patreon/Discord
+presence for community announcements, updates, and feature requests —
+not a data-collection surface, just a public communication channel.

@@ -1,5 +1,5 @@
 // ============================================================================
-// Stream Composer — app logic
+// Stream Composer Suite — app logic
 // ============================================================================
 // A Project is { canvasWidth, canvasHeight, items: [...] }, saved as a real
 // file (project.json) via Tauri's fs commands (see src-tauri/src/lib.rs) —
@@ -160,7 +160,7 @@ async function openProject() {
       setStatus('That folder doesn\'t have a project.json, but it looks like an old popup-slide project (it has a settings.js) — importing it now.', 'ok');
       await startLegacyImportFromFolder(folder);
     } else {
-      setStatus('That folder doesn\'t have a project.json — not a Stream Composer project.', 'err');
+      setStatus('That folder doesn\'t have a project.json — not a Stream Composer Suite project.', 'err');
     }
     return;
   }
