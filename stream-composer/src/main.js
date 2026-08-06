@@ -21,6 +21,8 @@ import { applyBlur } from './blur.js';
 import { applyFlip, applyRotate } from './transform.js';
 import { applySharpen } from './sharpen.js';
 import { applyVignette } from './vignette.js';
+import { PLATFORM_ICONS, platformIconSvg } from './popup-slide-icons.js';
+import { parseSlidesText, slidesToPlaintext } from './popup-slide-import.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -72,7 +74,8 @@ function defaultPropsFor(type) {
   }
   if (type === 'popup-slide') {
     return {
-      slides: [{ tag: 'WEB', text: 'YourSite.com' }],
+      contentMode: 'structured', // 'structured' | 'plaintext'
+      slides: [{ tag: 'WEB', text: 'YourSite.com', iconMode: 'none' }],
       transitionStyle: 'fade',
       perSlideMs: 2600,
       pauseMs: 500,
@@ -1067,8 +1070,48 @@ function wireVignetteDialog() {
   });
 }
 
+// Icon preview shown next to each slide card's icon-mode dropdown. Custom
+// icons are filled in asynchronously after the list renders (see
+// loadCustomIconPreviews below) since reading the file's bytes needs an
+// invoke() round trip — a data: URL is never persisted in props, only the
+// file PATH is (same convention `image` items already use), so this is
+// re-fetched on demand rather than cached.
+function iconPreviewHTML(s, i) {
+  if (s.iconMode === 'platform' && s.platformKey) {
+    return `<div class="icon-preview"><svg viewBox="0 0 24 24">${platformIconSvg(s.platformKey)}</svg></div>`;
+  }
+  if (s.iconMode === 'keep' && s.rawIcon) {
+    return `<div class="icon-preview"><svg viewBox="0 0 24 24">${s.rawIcon}</svg></div>`;
+  }
+  if (s.iconMode === 'custom') {
+    return `<div class="icon-preview" data-custom-preview="${i}"></div>`;
+  }
+  return `<div class="icon-preview"><div style="width:20px;height:20px;border-radius:4px;background:#7c5cff;"></div></div>`;
+}
+
+function iconOptionsHTML(s) {
+  const options = ['<option value="none">No icon</option>'];
+  for (const key in PLATFORM_ICONS) {
+    options.push(`<option value="platform:${key}">${PLATFORM_ICONS[key].label}</option>`);
+  }
+  options.push('<option value="custom">Custom image file…</option>');
+  if (s.iconMode === 'keep') {
+    options.push('<option value="keep">Existing custom icon (kept as-is)</option>');
+  }
+  return options.join('');
+}
+
+function iconSelectedValue(s) {
+  if (s.iconMode === 'platform') return `platform:${s.platformKey}`;
+  if (s.iconMode === 'custom') return 'custom';
+  if (s.iconMode === 'keep') return 'keep';
+  return 'none';
+}
+
 function renderPopupSlideProperties(item, body) {
   const p = item.props;
+  if (!p.contentMode) p.contentMode = 'structured'; // tolerate projects saved before this field existed
+
   body.innerHTML = `
     <div class="field">
       <label for="pf-transitionStyle">Text transition style</label>
@@ -1081,40 +1124,132 @@ function renderPopupSlideProperties(item, body) {
       <div class="field"><label>Seconds per slide</label><input type="number" id="pf-perSlideSeconds" step="0.1" min="0.5" value="${p.perSlideMs / 1000}"></div>
       <div class="field"><label>Pause before repeat (sec)</label><input type="number" id="pf-pauseSeconds" step="0.1" min="0" value="${p.pauseMs / 1000}"></div>
     </div>
-    <div class="field"><label>Slides</label></div>
-    <div id="pf-slideList"></div>
-    <button class="secondary block" id="pf-addSlide" type="button">+ Add slide</button>
-    <div class="hint">Icons/images per slide aren't supported here yet — for now every slide shows plain tag + text. Use the Popup Slide Editor (app/) if you need per-slide icons.</div>
+    <div class="field">
+      <label for="pf-contentMode">Slide content</label>
+      <select id="pf-contentMode">
+        <option value="structured" ${p.contentMode === 'structured' ? 'selected' : ''}>Per-slide (icons supported)</option>
+        <option value="plaintext" ${p.contentMode === 'plaintext' ? 'selected' : ''}>Plaintext (quick to edit, no icons)</option>
+      </select>
+    </div>
+    <div id="pf-slideContent"></div>
   `;
+
+  const contentHost = document.getElementById('pf-slideContent');
 
   function renderSlideList() {
     const list = document.getElementById('pf-slideList');
-    list.innerHTML = p.slides.map((s, i) => `
-      <div class="slide-card">
-        <div class="slide-card-head"><span>SLIDE ${i + 1}</span>
-          <button class="remove-btn" style="margin:0;width:auto;padding:2px 8px;" data-i="${i}" data-action="remove-slide" type="button">Remove</button>
+    list.innerHTML = p.slides.map((s, i) => {
+      if (!s.iconMode) s.iconMode = 'none'; // tolerate slides saved before icons existed
+      return `
+        <div class="slide-card">
+          <div class="slide-card-head"><span>SLIDE ${i + 1}</span>
+            <button class="remove-btn" style="margin:0;width:auto;padding:2px 8px;" data-i="${i}" data-action="remove-slide" type="button">Remove</button>
+          </div>
+          <div class="field"><label>Tag</label><input type="text" data-i="${i}" data-field="tag" value="${escapeHtml(s.tag)}"></div>
+          <div class="field"><label>Text</label><input type="text" data-i="${i}" data-field="text" value="${escapeHtml(s.text)}"></div>
+          <div class="icon-row">
+            ${iconPreviewHTML(s, i)}
+            <select data-i="${i}" data-field="iconSelect">${iconOptionsHTML(s)}</select>
+          </div>
+          ${s.iconMode === 'custom' ? `<button class="secondary block" style="margin-top:6px;" data-i="${i}" data-action="pick-custom-icon" type="button">Choose image…</button>` : ''}
         </div>
-        <div class="field"><label>Tag</label><input type="text" data-i="${i}" data-field="tag" value="${escapeHtml(s.tag)}"></div>
-        <div class="field"><label>Text</label><input type="text" data-i="${i}" data-field="text" value="${escapeHtml(s.text)}"></div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
+
+    list.querySelectorAll('select[data-field="iconSelect"]').forEach((sel) => {
+      const i = parseInt(sel.getAttribute('data-i'), 10);
+      sel.value = iconSelectedValue(p.slides[i]);
+    });
+
     list.querySelectorAll('input').forEach((el) => el.addEventListener('input', (e) => {
       const i = parseInt(e.target.getAttribute('data-i'), 10);
       const field = e.target.getAttribute('data-field');
       p.slides[i][field] = e.target.value;
     }));
+
     list.querySelectorAll('[data-action="remove-slide"]').forEach((btn) => btn.addEventListener('click', (e) => {
       const i = parseInt(e.target.getAttribute('data-i'), 10);
       if (p.slides.length <= 1) return; // keep at least one slide
       p.slides.splice(i, 1);
       renderSlideList();
     }));
-  }
-  renderSlideList();
 
-  document.getElementById('pf-addSlide').addEventListener('click', () => {
-    p.slides.push({ tag: '', text: '' });
+    list.querySelectorAll('select[data-field="iconSelect"]').forEach((sel) => sel.addEventListener('change', (e) => {
+      const i = parseInt(e.target.getAttribute('data-i'), 10);
+      const val = e.target.value;
+      if (val === 'none') {
+        p.slides[i].iconMode = 'none';
+      } else if (val === 'custom') {
+        p.slides[i].iconMode = 'custom';
+      } else if (val === 'keep') {
+        p.slides[i].iconMode = 'keep';
+      } else if (val.indexOf('platform:') === 0) {
+        p.slides[i].iconMode = 'platform';
+        p.slides[i].platformKey = val.slice('platform:'.length);
+      }
+      renderSlideList();
+    }));
+
+    list.querySelectorAll('[data-action="pick-custom-icon"]').forEach((btn) => btn.addEventListener('click', async (e) => {
+      const i = parseInt(e.target.getAttribute('data-i'), 10);
+      const path = await invoke('pick_image_file');
+      if (!path) return;
+      p.slides[i].customAssetPath = path;
+      renderSlideList();
+    }));
+
+    // Custom-icon thumbnails load async (need a file-read round trip) —
+    // fill them in after the list is already on screen.
+    list.querySelectorAll('[data-custom-preview]').forEach((el) => {
+      const i = parseInt(el.getAttribute('data-custom-preview'), 10);
+      const path = p.slides[i] && p.slides[i].customAssetPath;
+      if (!path) return;
+      invoke('read_binary_file_base64', { path }).then((base64) => {
+        const ext = (path.split('.').pop() || 'png').toLowerCase();
+        const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+        el.innerHTML = `<img src="data:${mime};base64,${base64}" alt="">`;
+      }).catch(() => {
+        el.innerHTML = '';
+      });
+    });
+  }
+
+  function renderStructuredMode() {
+    contentHost.innerHTML = `
+      <div class="field"><label>Slides</label></div>
+      <div id="pf-slideList"></div>
+      <button class="secondary block" id="pf-addSlide" type="button">+ Add slide</button>
+    `;
     renderSlideList();
+    document.getElementById('pf-addSlide').addEventListener('click', () => {
+      p.slides.push({ tag: '', text: '', iconMode: 'none' });
+      renderSlideList();
+    });
+  }
+
+  function renderPlaintextMode() {
+    contentHost.innerHTML = `
+      <div class="field">
+        <label for="pf-plaintextSlides">Slides (tag, then text, blank line between slides)</label>
+        <textarea id="pf-plaintextSlides" rows="8">${escapeHtml(slidesToPlaintext(p.slides))}</textarea>
+      </div>
+      <div class="hint">Per-slide icons aren't available in plaintext mode — switch to "Per-slide" to set icons. Switching back to plaintext will drop any icons already set on the slides.</div>
+    `;
+    document.getElementById('pf-plaintextSlides').addEventListener('change', (e) => {
+      const parsed = parseSlidesText(e.target.value);
+      p.slides = (parsed.length ? parsed : [{ tag: '', text: '' }]).map((s) => ({ tag: s.tag, text: s.text, iconMode: 'none' }));
+    });
+  }
+
+  function renderContent() {
+    if (p.contentMode === 'plaintext') renderPlaintextMode();
+    else renderStructuredMode();
+  }
+  renderContent();
+
+  document.getElementById('pf-contentMode').addEventListener('change', (e) => {
+    p.contentMode = e.target.value;
+    renderContent();
   });
 
   const applyGeneral = () => {

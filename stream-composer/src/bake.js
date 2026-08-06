@@ -13,6 +13,9 @@
 // of written out as its own separate settings.js.
 // ============================================================================
 
+import { platformIconSvg } from './popup-slide-icons.js';
+import { buildPopupSlideScript } from './popup-slide-engine.js';
+
 // Escapes text for safe use inside an HTML attribute or text node.
 function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -48,18 +51,42 @@ function renderImageItem(item, assetPath) {
 }
 
 // ---- POPUP-SLIDE ----------------------------------------------------------
-// Reuses v1-pop-up-slide's proven engine almost verbatim (see
-// v1-pop-up-slide/campaign-thenerdybox/stream-popup-overlay.html) — the
-// only structural change is `position: fixed` -> `position: absolute`, so
-// the badge anchors to ITS OWN wrapper box (this item's x/y/width/height)
-// instead of the whole browser viewport. Everything else — the slide-in/
-// out animation, the transition styles, the message cycling loop — is the
-// same engine logic, just scoped with a unique id prefix so multiple
-// popup-slide items in one scene don't collide.
-function renderPopupSlideItem(item, instanceId) {
+// The HTML/CSS structure below descends from v1-pop-up-slide's proven
+// design — the only structural change is `position: fixed` ->
+// `position: absolute`, so the badge anchors to ITS OWN wrapper box (this
+// item's x/y/width/height) instead of the whole browser viewport. The
+// actual animation LOGIC (slide-in/out, transition styles, message
+// cycling) lives in popup-slide-engine.js, scoped per-instance via a
+// unique id prefix so multiple popup-slide items in one scene don't
+// collide.
+// Resolves each slide's iconMode into what the engine actually needs to
+// render: either inline SVG markup (platform placeholder or a kept legacy
+// icon) or a baked image path (custom icon, copied in via
+// collectAssetCopies() below) or nothing at all. assetPathsById maps the
+// compound key `${item.id}::slide${i}` (see collectAssetCopies) to that
+// slide's copied-asset relative path.
+function resolveSlideIcon(item, slide, index, assetPathsById) {
+  if (slide.iconMode === 'platform' && slide.platformKey) {
+    return { iconType: 'svg', iconSvg: platformIconSvg(slide.platformKey) };
+  }
+  if (slide.iconMode === 'keep' && slide.rawIcon) {
+    return { iconType: 'svg', iconSvg: slide.rawIcon };
+  }
+  if (slide.iconMode === 'custom') {
+    const assetPath = assetPathsById[`${item.id}::slide${index}`];
+    if (assetPath) return { iconType: 'image', iconSrc: assetPath };
+  }
+  return { iconType: 'none' };
+}
+
+function renderPopupSlideItem(item, instanceId, assetPathsById) {
   const p = item.props;
   const colors = p.colors;
-  const slidesJs = JSON.stringify(p.slides.map((s) => ({ tag: s.tag, text: s.text })));
+  const slidesForEngine = p.slides.map((s, i) => ({
+    tag: s.tag,
+    text: s.text,
+    ...resolveSlideIcon(item, s, i, assetPathsById),
+  }));
 
   const html = `
 <div class="item item-popup-slide" style="${wrapperStyle(item)} overflow:visible;">
@@ -119,103 +146,61 @@ function renderPopupSlideItem(item, instanceId) {
   </div>
 </div>`;
 
-  // Same engine logic as stream-popup-overlay.html's <script> block,
-  // ported to run against this instance's own scoped element ids instead
-  // of one fixed set of global ids.
-  const script = `
-(function () {
-  const SLIDES = ${slidesJs};
-  const TIMING = { holdBeforeOpening: 350, textOpenDuration: 450, perMessageHold: ${p.perSlideMs}, swapFade: 260, holdBeforeSlideOut: 400, slideOutPause: ${p.pauseMs} };
-  const TRANSITION_STYLES = {
-    'fade': { transform: 'translate(0px, 4px)' },
-    'slide': { transform: 'translate(22px, 0px)' },
-    'slide-up': { transform: 'translate(0px, 22px)' },
-    'slide-down': { transform: 'translate(0px, -22px)' },
-    'zoom': { transform: 'scale(0.82)' },
-    'none': { transform: 'translate(0px, 0px)', instant: true },
+  const timing = {
+    holdBeforeOpening: 350, textOpenDuration: 450, perMessageHold: p.perSlideMs,
+    swapFade: 260, holdBeforeSlideOut: 400, slideOutPause: p.pauseMs,
   };
-  const RANDOMIZABLE_STYLES = Object.keys(TRANSITION_STYLES);
-  const wrap = document.getElementById('${instanceId}');
-  const textPanel = document.getElementById('${instanceId}-panel');
-  const textInner = document.getElementById('${instanceId}-inner');
-  const msgTag = document.getElementById('${instanceId}-tag');
-  const msgText = document.getElementById('${instanceId}-text');
-  const root = wrap.style;
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  function applyTransitionStyle() {
-    let key = ${JSON.stringify(p.transitionStyle)};
-    if (key === 'random') key = RANDOMIZABLE_STYLES[Math.floor(Math.random() * RANDOMIZABLE_STYLES.length)];
-    const style = TRANSITION_STYLES[key] || TRANSITION_STYLES.fade;
-    root.setProperty('--swap-transform', style.transform);
-    root.setProperty('--swap-duration', style.instant ? '0s' : '0.3s');
-  }
-
-  function setMessage(message) {
-    applyTransitionStyle();
-    msgTag.textContent = message.tag;
-    msgText.textContent = message.text;
-    textPanel.style.maxWidth = textInner.scrollWidth + 46 + 'px';
-  }
-
-  async function runCycle() {
-    setMessage(SLIDES[0]);
-    textPanel.style.maxWidth = '0px';
-    wrap.classList.add('is-visible');
-    await sleep(TIMING.holdBeforeOpening + 700);
-
-    setMessage(SLIDES[0]);
-    await sleep(50);
-    textInner.classList.add('is-shown');
-    await sleep(TIMING.textOpenDuration + TIMING.perMessageHold);
-
-    for (let i = 1; i < SLIDES.length; i++) {
-      textInner.classList.remove('is-shown');
-      await sleep(TIMING.swapFade);
-      setMessage(SLIDES[i]);
-      textInner.classList.add('is-shown');
-      await sleep(TIMING.perMessageHold);
-    }
-
-    textInner.classList.remove('is-shown');
-    textPanel.style.maxWidth = '0px';
-    await sleep(TIMING.holdBeforeSlideOut);
-    wrap.classList.remove('is-visible');
-    await sleep(700 + TIMING.slideOutPause);
-  }
-
-  (async function loopForever() { while (true) { await runCycle(); } })();
-})();`;
+  const script = buildPopupSlideScript(instanceId, slidesForEngine, timing, p.transitionStyle);
 
   return { html, script };
 }
 
 // ---- ASSET COLLECTION -------------------------------------------------
 // Every `image` item needs its source file copied into the output's
-// assets/ folder. Returns [{ itemId, sourcePath, destRelativePath }].
+// assets/ folder, and so does every popup-slide item's slide that uses a
+// custom icon (iconMode: 'custom'). Returns
+// [{ itemId, sourcePath, destRelativePath }] — a popup-slide slide's
+// itemId is the compound key `${item.id}::slide${i}` (see
+// resolveSlideIcon above, which looks entries back up by this same key).
 export function collectAssetCopies(project) {
-  return project.items
-    .filter((item) => item.type === 'image' && item.props.sourcePath)
-    .map((item) => {
+  const copies = [];
+  for (const item of project.items) {
+    if (item.type === 'image' && item.props.sourcePath) {
       const ext = (item.props.sourcePath.split('.').pop() || 'png').toLowerCase();
-      return {
+      copies.push({
         itemId: item.id,
         sourcePath: item.props.sourcePath,
         destRelativePath: `assets/${item.id}.${ext}`,
-      };
-    });
+      });
+    }
+    if (item.type === 'popup-slide') {
+      (item.props.slides || []).forEach((slide, i) => {
+        if (slide.iconMode === 'custom' && slide.customAssetPath) {
+          const ext = (slide.customAssetPath.split('.').pop() || 'png').toLowerCase();
+          copies.push({
+            itemId: `${item.id}::slide${i}`,
+            sourcePath: slide.customAssetPath,
+            destRelativePath: `assets/${item.id}-slide${i}.${ext}`,
+          });
+        }
+      });
+    }
+  }
+  return copies;
 }
 
 // ---- MAIN BUILD FUNCTION -----------------------------------------------
 // Returns the full scene.html text for the given project. assetPathsById
-// maps image item id -> its destRelativePath (from collectAssetCopies),
+// maps each collectAssetCopies() itemId (an image item's own id, or a
+// popup-slide's compound `${item.id}::slide${i}` key) -> its
+// destRelativePath (from collectAssetCopies),
 // so this function doesn't need to know about the filesystem at all.
 export function buildSceneHtml(project, assetPathsById) {
   const sorted = [...project.items].sort((a, b) => a.zIndex - b.zIndex);
   const parts = sorted.map((item, index) => {
     if (item.type === 'frame') return renderFrameItem(item);
     if (item.type === 'image') return renderImageItem(item, assetPathsById[item.id] || '');
-    if (item.type === 'popup-slide') return renderPopupSlideItem(item, `popup-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
+    if (item.type === 'popup-slide') return renderPopupSlideItem(item, `popup-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     return { html: '', script: '' };
   });
 

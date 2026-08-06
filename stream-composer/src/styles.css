@@ -235,6 +235,27 @@ button.block {
   color: #918eae;
 }
 
+.icon-preview {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1c1d28;
+  flex-shrink: 0;
+}
+.icon-preview svg { width: 20px; height: 20px; }
+.icon-preview img { width: 20px; height: 20px; object-fit: contain; }
+
+.icon-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+.icon-row select { flex: 1; }
+
 #status {
   padding: 8px 24px 14px 24px;
   font-size: 13px;
