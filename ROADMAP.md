@@ -73,6 +73,16 @@ gone" are both true at once, no tension between them.
   future version too.
 - Two apps, two separate version numbers — this ends once v1.0.0 ships
   (see below).
+- **v1.1.0 (Stinger Builder) is already built on top of v1.0.0**, per
+  Harvey's explicit call to keep building/committing while v1.0.0's
+  testing pass is pending rather than blocking on it — same "build now,
+  release later" discipline, not stacking untested work on faith. Also
+  published as a GitHub pre-release
+  (https://github.com/SasiRawr/Stream-Composer/releases/tag/v1.1.0),
+  staged for testing in `Tests/v1.1.0-stinger-builder/`. First item off
+  the v1.x.0 list below — see that section for what it is and why a
+  solid-key-color export mode is the reliable default, with true alpha
+  transparency offered only as an experimental option on top.
 
 ## v0.8.0 – v0.9.0: two more standalone modules
 
@@ -137,8 +147,13 @@ from this list gets built before v1.0.0. Build each as its own
 standalone module/release — same incremental pattern as v0.2.0–v0.9.0 —
 **before** attempting to combine them (that combination is v2.0.0, below):
 
-1. Stinger/transition builder (WebM export with transparency) — ties
-   directly into the video/GIF/WebM chroma-key interest already noted.
+1. **Stinger/transition builder — built as v1.1.0, pending Harvey's
+   testing pass (see "Where things stand" above).** Ties directly into
+   the video/GIF/WebM chroma-key interest already noted. Shipped with a
+   solid-key-color export mode as the reliable default (Harvey's
+   explicit call: not a pass/fail bet on true alpha transparency —
+   easier matters more than being different) plus an experimental true-
+   alpha mode, only offered when a capability check confirms support.
 2. Unified multi-platform chat + TTS overlay — the reframed idea from
    the research doc, using free browser-native `speechSynthesis`.
 3. Asset library / reusable components.

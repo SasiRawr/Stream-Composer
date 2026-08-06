@@ -4,6 +4,17 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.1.0 — 2026-08-06 (pre-release, pending verification)
+
+### Added
+- **Stinger Builder…** — build a short animated transition clip for
+  OBS's Stinger Transition feature. 4 built-in templates (Fade, Slide
+  Through, Zoom Burst, Wipe), a live scrubbable preview, and two export
+  modes: **Solid color** (recommended, always available — pairs with
+  OBS's own built-in Chroma Key filter) and **Transparent**
+  (experimental — real alpha-channel export, only offered if your
+  system supports it). Doesn't need an open project.
+
 ## v1.0.0 — 2026-08-06 (pre-release, pending verification)
 
 ### Added (so far)
