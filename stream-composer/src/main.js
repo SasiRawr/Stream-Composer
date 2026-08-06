@@ -25,6 +25,9 @@ import { PLATFORM_ICONS, platformIconSvg } from './popup-slide-icons.js';
 import { parseSlidesText, slidesToPlaintext, evalConfig, legacyConfigToPopupSlideProps } from './popup-slide-import.js';
 import { gradientCoordsForAngle } from './gradient.js';
 import { STARTER_TEMPLATES } from './starter-kit/manifest.js';
+import { STINGER_TEMPLATES, defaultStingerProps } from './stinger-templates.js';
+import { renderStingerFrame } from './stinger-render.js';
+import { checkAlphaSupport, exportStinger } from './stinger-export.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -1623,6 +1626,207 @@ function wireStarterKitDialog() {
   });
 }
 
+// ---- STINGER BUILDER DIALOG -------------------------------------------------
+// A standalone tool, not tied to any open project — a stinger has no x/y
+// position on the stream canvas, it's an exportable clip. See
+// stinger-templates.js/stinger-render.js/stinger-export.js for the actual
+// animation/encoding logic; this is just the dialog's DOM wiring.
+let stingerProps = null;
+let stingerLogoImage = null; // HTMLImageElement, or null if none picked yet
+let stingerAnimHandle = null;
+let stingerAnimStartTime = null;
+let stingerScrubbing = false;
+
+function currentStingerTemplate() {
+  const key = document.getElementById('stingerTemplate').value;
+  return STINGER_TEMPLATES.find((t) => t.key === key) || STINGER_TEMPLATES[0];
+}
+
+function stingerExportMode() {
+  return document.querySelector('input[name="stingerExportMode"]:checked').value;
+}
+
+function stingerBackground() {
+  return stingerExportMode() === 'alpha' ? null : document.getElementById('stingerKeyColor').value;
+}
+
+function drawStingerPreviewFrame(tMs) {
+  const canvas = document.getElementById('stingerPreviewCanvas');
+  const ctx = canvas.getContext('2d');
+  const template = currentStingerTemplate();
+  const frameData = template.renderFrame(tMs, stingerProps.durationMs, stingerProps);
+  renderStingerFrame(ctx, frameData, { logo: stingerLogoImage }, stingerBackground());
+}
+
+function stingerAnimLoop(now) {
+  if (stingerAnimStartTime === null) stingerAnimStartTime = now;
+  if (!stingerScrubbing) {
+    const elapsed = (now - stingerAnimStartTime) % stingerProps.durationMs;
+    document.getElementById('stingerScrub').value = String(Math.round((elapsed / stingerProps.durationMs) * 1000));
+    drawStingerPreviewFrame(elapsed);
+  }
+  stingerAnimHandle = requestAnimationFrame(stingerAnimLoop);
+}
+
+async function resizeStingerCanvas() {
+  const [width, height] = document.getElementById('stingerResolution').value.split('x').map((n) => parseInt(n, 10));
+  stingerProps.canvasWidth = width;
+  stingerProps.canvasHeight = height;
+
+  // Logo size is proportional to canvas height, preserving the actual
+  // picked image's aspect ratio (or a square placeholder if none picked).
+  const aspect = stingerLogoImage ? stingerLogoImage.naturalWidth / stingerLogoImage.naturalHeight : 1;
+  stingerProps.logoHeight = Math.round(height * 0.35);
+  stingerProps.logoWidth = Math.round(stingerProps.logoHeight * aspect);
+
+  const canvas = document.getElementById('stingerPreviewCanvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const alphaOk = await checkAlphaSupport(width, height).catch(() => false);
+  document.getElementById('stingerModeAlpha').disabled = !alphaOk;
+  if (!alphaOk && stingerExportMode() === 'alpha') {
+    document.getElementById('stingerModeChromakey').checked = true;
+    document.getElementById('stingerKeyColorField').hidden = false;
+  }
+}
+
+async function openStingerBuilderDialog() {
+  stingerProps = defaultStingerProps();
+  stingerLogoImage = null;
+  stingerScrubbing = false;
+  stingerAnimStartTime = null;
+
+  const templateSelect = document.getElementById('stingerTemplate');
+  templateSelect.innerHTML = STINGER_TEMPLATES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('');
+  document.getElementById('stingerTemplateDescription').textContent = STINGER_TEMPLATES[0].description;
+
+  document.getElementById('stingerDuration').value = String(stingerProps.durationMs / 1000);
+  document.getElementById('stingerResolution').value = '1920x1080';
+  document.getElementById('stingerPrimaryColor').value = stingerProps.primaryColor;
+  document.getElementById('stingerKeyColor').value = stingerProps.keyColor;
+  document.getElementById('stingerModeChromakey').checked = true;
+  document.getElementById('stingerKeyColorField').hidden = false;
+  document.getElementById('stingerLogoStatus').textContent = 'No image chosen yet — the animation will still preview, just without a logo.';
+  document.getElementById('stingerExportStatus').textContent = '';
+
+  await resizeStingerCanvas();
+
+  document.getElementById('stingerBuilderDialog').showModal();
+  stingerAnimHandle = requestAnimationFrame(stingerAnimLoop);
+}
+
+function closeStingerBuilderDialog() {
+  if (stingerAnimHandle) cancelAnimationFrame(stingerAnimHandle);
+  stingerAnimHandle = null;
+  document.getElementById('stingerBuilderDialog').close();
+}
+
+// Converts a (potentially several-MB) video ArrayBuffer to base64 without
+// spreading it into String.fromCharCode's argument list all at once —
+// that would blow the call stack on anything but a tiny file. Chunking
+// keeps each String.fromCharCode.apply call well under the argument-count
+// limit.
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function exportStingerNow() {
+  const statusEl = document.getElementById('stingerExportStatus');
+  const outputPath = await invoke('pick_project_folder');
+  if (!outputPath) return;
+
+  statusEl.textContent = 'Exporting…';
+  const exportBtn = document.getElementById('stingerExportBtn');
+  exportBtn.disabled = true;
+
+  try {
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = stingerProps.canvasWidth;
+    exportCanvas.height = stingerProps.canvasHeight;
+
+    const buffer = await exportStinger({
+      canvas: exportCanvas,
+      template: currentStingerTemplate(),
+      props: stingerProps,
+      assets: { logo: stingerLogoImage },
+    });
+
+    const base64 = arrayBufferToBase64(buffer);
+    const filePath = joinPath(outputPath, `stinger-${currentStingerTemplate().key}.webm`);
+    await invoke('write_binary_file', { path: filePath, base64Data: base64 });
+
+    const modeNote = stingerExportMode() === 'alpha'
+      ? 'Exported with real transparency (experimental) — add it to OBS as a Stinger Transition.'
+      : `Exported with a solid ${document.getElementById('stingerKeyColor').value} background — add it to OBS as a Stinger Transition, then add the built-in Chroma Key filter set to that color.`;
+    statusEl.textContent = `Saved to ${filePath}. ${modeNote}`;
+  } catch (err) {
+    statusEl.textContent = 'Export failed: ' + err;
+  } finally {
+    exportBtn.disabled = false;
+  }
+}
+
+function wireStingerBuilderDialog() {
+  els.stingerBuilderBtn.addEventListener('click', openStingerBuilderDialog);
+  document.getElementById('stingerCloseBtn').addEventListener('click', closeStingerBuilderDialog);
+
+  document.getElementById('stingerTemplate').addEventListener('change', (e) => {
+    const t = STINGER_TEMPLATES.find((t) => t.key === e.target.value);
+    document.getElementById('stingerTemplateDescription').textContent = t ? t.description : '';
+  });
+
+  document.getElementById('stingerDuration').addEventListener('change', (e) => {
+    const seconds = parseFloat(e.target.value);
+    if (seconds > 0) stingerProps.durationMs = Math.round(seconds * 1000);
+  });
+
+  document.getElementById('stingerResolution').addEventListener('change', resizeStingerCanvas);
+  document.getElementById('stingerPrimaryColor').addEventListener('input', (e) => { stingerProps.primaryColor = e.target.value; });
+
+  document.getElementById('stingerPickLogoBtn').addEventListener('click', async () => {
+    const path = await invoke('pick_image_file');
+    if (!path) return;
+    try {
+      const base64 = await invoke('read_binary_file_base64', { path });
+      const ext = (path.split('.').pop() || 'png').toLowerCase();
+      const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = `data:${mime};base64,${base64}`;
+      });
+      stingerLogoImage = img;
+      document.getElementById('stingerLogoStatus').textContent = 'Using: ' + path;
+      await resizeStingerCanvas();
+    } catch (err) {
+      setStatus('Couldn\'t load that image: ' + err, 'err');
+    }
+  });
+
+  document.querySelectorAll('input[name="stingerExportMode"]').forEach((el) => el.addEventListener('change', () => {
+    document.getElementById('stingerKeyColorField').hidden = stingerExportMode() === 'alpha';
+  }));
+  document.getElementById('stingerKeyColor').addEventListener('input', (e) => { stingerProps.keyColor = e.target.value; });
+
+  const scrub = document.getElementById('stingerScrub');
+  scrub.addEventListener('pointerdown', () => { stingerScrubbing = true; });
+  scrub.addEventListener('pointerup', () => { stingerScrubbing = false; stingerAnimStartTime = null; });
+  scrub.addEventListener('input', () => {
+    const tMs = (parseInt(scrub.value, 10) / 1000) * stingerProps.durationMs;
+    drawStingerPreviewFrame(tMs);
+  });
+
+  document.getElementById('stingerExportBtn').addEventListener('click', exportStingerNow);
+}
+
 // ---- BOOTSTRAP ----------------------------------------------------------------
 window.addEventListener('DOMContentLoaded', () => {
   els = {
@@ -1644,10 +1848,12 @@ window.addEventListener('DOMContentLoaded', () => {
     deleteItemBtn: document.getElementById('deleteItemBtn'),
     bakeNewFolderBtn: document.getElementById('bakeNewFolderBtn'),
     bakeResultActions: document.getElementById('bakeResultActions'),
+    stingerBuilderBtn: document.getElementById('stingerBuilderBtn'),
   };
 
   wireNewProjectDialog();
   wireStarterKitDialog();
+  wireStingerBuilderDialog();
   wireChromaKeyDialog();
   wireCropDialog();
   wirePadDialog();

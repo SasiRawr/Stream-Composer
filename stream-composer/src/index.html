@@ -33,6 +33,7 @@
     <button class="primary" id="saveProjectBtn" type="button" disabled>Save Project</button>
     <button class="primary" id="bakeBtn" type="button" disabled>Bake Browser Source…</button>
     <button class="secondary" id="bakeNewFolderBtn" type="button" hidden>Bake to new folder…</button>
+    <button class="secondary" id="stingerBuilderBtn" type="button" title="Build a short animated transition clip for OBS's Stinger Transition feature">Stinger Builder…</button>
   </div>
 </div>
 <div class="subtitle" id="subtitle">No project open.</div>
@@ -350,6 +351,77 @@
     <button class="primary" id="vgApplyBtn" type="button">Apply</button>
     <button class="secondary" id="vgCancelBtn" type="button">Cancel</button>
   </div>
+</dialog>
+
+<!--
+  Stinger Builder dialog: a standalone tool, not tied to any open project
+  (a stinger has no position on the stream canvas - it's an exportable
+  clip, not a placed item). Pick a template, a logo image, and an export
+  mode, scrub the live preview, then export a real .webm. Solid-color
+  export mode is the reliable default (works with OBS's built-in Chroma
+  Key filter on any system); Transparent mode only appears if a quick
+  capability check confirms this system's browser engine can actually
+  encode alpha-channel video.
+-->
+<dialog id="stingerBuilderDialog" class="wide-dialog">
+  <h2>Stinger Builder</h2>
+  <div class="hint">Build a short animated transition clip for OBS's Stinger Transition feature.</div>
+
+  <div class="field-row">
+    <div class="field">
+      <label for="stingerTemplate">Template</label>
+      <select id="stingerTemplate"></select>
+    </div>
+    <div class="field">
+      <label for="stingerDuration">Duration (seconds)</label>
+      <input type="number" id="stingerDuration" min="0.5" max="10" step="0.1" value="1.5">
+    </div>
+  </div>
+  <div class="hint" id="stingerTemplateDescription"></div>
+
+  <div class="field-row">
+    <div class="field">
+      <label for="stingerResolution">Resolution</label>
+      <select id="stingerResolution">
+        <option value="1920x1080">1920 x 1080 (1080p)</option>
+        <option value="1280x720">1280 x 720 (720p)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Logo / image</label>
+      <button class="secondary block" id="stingerPickLogoBtn" type="button">Choose image…</button>
+    </div>
+  </div>
+  <div class="hint" id="stingerLogoStatus">No image chosen yet — the animation will still preview, just without a logo.</div>
+
+  <div class="field">
+    <label for="stingerPrimaryColor">Panel color (used by the Wipe template)</label>
+    <input type="color" id="stingerPrimaryColor" value="#7c5cff">
+  </div>
+
+  <div class="field">
+    <label>Export mode</label>
+    <div class="field-row">
+      <label><input type="radio" name="stingerExportMode" value="chromakey" id="stingerModeChromakey" checked> Solid color (recommended)</label>
+      <label><input type="radio" name="stingerExportMode" value="alpha" id="stingerModeAlpha" disabled> Transparent (experimental)</label>
+    </div>
+  </div>
+  <div class="field" id="stingerKeyColorField">
+    <label for="stingerKeyColor">Key color</label>
+    <input type="color" id="stingerKeyColor" value="#00ff00">
+    <div class="hint">After exporting, add OBS's built-in Chroma Key filter to this source and set it to this color.</div>
+  </div>
+
+  <div class="ck-preview-wrap">
+    <canvas id="stingerPreviewCanvas"></canvas>
+  </div>
+  <input type="range" id="stingerScrub" min="0" max="1000" value="0" step="1">
+
+  <div class="actions">
+    <button class="primary" id="stingerExportBtn" type="button">Export…</button>
+    <button class="secondary" id="stingerCloseBtn" type="button">Close</button>
+  </div>
+  <div class="hint" id="stingerExportStatus"></div>
 </dialog>
 
 <script type="module" src="/main.js"></script>
