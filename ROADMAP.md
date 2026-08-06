@@ -16,7 +16,30 @@ this project:
   feature added to whichever app it lives in.
 - **`v0.0.X`** — bug fixes and patches only, no new capability.
 
-## Where things stand (2026-08-05)
+If a v1.x.0 module needs more patch iterations than a single digit
+comfortably covers, letter suffixes are fine (`v1.1.1-a`, `-b`, ...) —
+not expected to actually happen, just the agreed fallback if it does.
+
+## Release process (agreed 2026-08-06)
+
+Every version gets built, tested (automated), committed, and pushed to
+`main` as soon as it's ready — Harvey can grab and try any pushed build
+at any time via the repo's `Tests/` folder (one subfolder per thing
+being tested, always at a known path). **A version is never published
+as a full GitHub Release until Harvey has actually clicked through it.**
+Untested-but-ready versions instead get cut as a GitHub **pre-release**
+(`gh release create <tag> --prerelease`) — same real version number,
+same installers, just flagged as unverified. Once Harvey confirms it's
+clean, the same release gets promoted in place
+(`gh release edit <tag> --prerelease=false`) — no re-tagging, no
+rebuild. Old versions never disappear either way: every tagged release
+stays permanently on the GitHub Releases page, and a second copy of
+every version's installers lives in the local
+`Documents\Claude Code\Projects\Modules\v<version>\` archive —
+"installs upgrade in place going forward" and "nothing old is ever
+gone" are both true at once, no tension between them.
+
+## Where things stand (2026-08-06)
 
 - `app/` ("Popup Slide Editor") — v0.1.0, human-tested, stable. Being
   retired into `stream-composer/` as part of the v1.0.0 merge, currently
@@ -36,16 +59,18 @@ this project:
   bake folder, copy-instructions action, single-item preview), and the
   Starter Kit Wizard (3 templates + gradient fill for frames) are all
   built, unit-tested where the logic is pure, and verified to compile
-  and launch cleanly. **The one thing left is the human-testing +
-  performance/stability pass** — real click-through of the Fabric
-  canvas (drag/resize/rotate/z-order), every dialog including the new
-  ones, a real Bake tested in an actual OBS install, and the gradient
-  picker's visual output — none of which can be done without a human at
-  the keyboard (no GUI-automation tool covers this app's native
-  window). See the detailed phased plan for exactly what to click
-  through; once that's clean, cutting the v1.0.0 release itself is
-  pure mechanics (version bump, build, tag, release) — nothing else
-  blocks it.
+  and launch cleanly. Published as a **GitHub pre-release**
+  (https://github.com/SasiRawr/Stream-Composer/releases/tag/v1.0.0) —
+  real v1.0.0 content, version-bumped for real, but flagged pre-release
+  since **the human-testing + performance/stability pass hasn't
+  happened yet**. A full first-time-user walkthrough/checklist is
+  staged for Harvey in the repo's `Tests/v1.0.0-merge/` folder
+  (`FIRST_STREAM_WALKTHROUGH.md`) — none of it can be done without a
+  human at the keyboard (no GUI-automation tool covers this app's
+  native window). Once he confirms it's clean: `gh release edit v1.0.0
+  --prerelease=false` promotes the same release, no rebuild/re-tag
+  needed — see the pre-release workflow this project now uses for every
+  future version too.
 - Two apps, two separate version numbers — this ends once v1.0.0 ships
   (see below).
 

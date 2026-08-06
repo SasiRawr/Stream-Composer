@@ -4,7 +4,7 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
-## v1.0.0 — in progress (draft, not yet released)
+## v1.0.0 — 2026-08-06 (pre-release, pending verification)
 
 ### Added (so far)
 - Repo consolidation: `scene-composer/` renamed to `stream-composer/`,
