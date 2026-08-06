@@ -17,11 +17,16 @@ download any version.
   uninstall both before installing).
 - `preview_overlay` Tauri command ported over from the old Popup Slide
   Editor (cache-busted live preview in the OS browser).
+- The `popup-slide` item type now supports per-slide icons (a platform
+  placeholder badge, a custom image file, or none) — matching, and in
+  the custom-icon case improving on, the standalone Popup Slide
+  Editor's capability. Also new: a Plaintext content mode for quickly
+  editing all slides as one block of text (no icons in that mode, same
+  real limitation the old editor had).
+- The popup-slide animation engine now has one source of truth
+  (`popup-slide-engine.js`) instead of two duplicate implementations.
 
 ### Still ahead before this ships
-- Closing the `popup-slide` item type's capability gap (per-slide icons,
-  plaintext editing mode) and reconciling the two existing popup-slide
-  animation-engine implementations into one.
 - Legacy project import (bringing old `settings.js`-based campaigns into
   the unified `project.json` model).
 - Overlay Asset Workflow improvements and the Starter Kit Wizard.
