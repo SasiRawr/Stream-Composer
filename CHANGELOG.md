@@ -25,10 +25,12 @@ download any version.
   real limitation the old editor had).
 - The popup-slide animation engine now has one source of truth
   (`popup-slide-engine.js`) instead of two duplicate implementations.
+- **Import Legacy Project…** — brings an old `settings.js`-based popup-
+  slide campaign into a new project.json project, without ever touching
+  the original files. Auto-offered when opening a folder that turns out
+  to be an old-style project instead of just erroring.
 
 ### Still ahead before this ships
-- Legacy project import (bringing old `settings.js`-based campaigns into
-  the unified `project.json` model).
 - Overlay Asset Workflow improvements and the Starter Kit Wizard.
 - A full human-testing + performance/stability pass (Scene Composer's
   core canvas flow has never been human-tested, even pre-merge).

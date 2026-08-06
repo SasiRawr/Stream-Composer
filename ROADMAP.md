@@ -32,10 +32,10 @@ this project:
 - **v1.0.0 merge status:** in progress. Shell consolidation (rename,
   Tauri identity, Rust command port) done; `popup-slide` capability-gap
   closing (per-slide icons, plaintext mode, engine reconciliation into
-  one source of truth) done. Legacy import, Overlay Asset Workflow,
-  Starter Kit Wizard, and the performance/stability pass are still
-  ahead. See the detailed phased plan for this merge if picking it back
-  up mid-stream.
+  one source of truth) done; legacy project import done. Overlay Asset
+  Workflow, Starter Kit Wizard, and the performance/stability pass are
+  still ahead. See the detailed phased plan for this merge if picking
+  it back up mid-stream.
 - Two apps, two separate version numbers — this ends once v1.0.0 ships
   (see below).
 
