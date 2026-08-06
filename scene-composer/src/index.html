@@ -288,6 +288,42 @@
   </div>
 </dialog>
 
+<!--
+  Vignette dialog: darkens (or tints) the image toward its edges. Same
+  non-destructive pattern as the others - writes a new "<id>-vignetted.png"
+  rather than touching the original.
+-->
+<dialog id="vignetteDialog" class="wide-dialog">
+  <h2>Vignette</h2>
+  <div class="ck-preview-wrap">
+    <canvas id="vgPreviewCanvas"></canvas>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label for="vgStrength">Strength: <span id="vgStrengthValue"></span></label>
+      <input type="range" id="vgStrength" min="0" max="1" step="0.02" value="0.5">
+    </div>
+    <div class="field">
+      <label for="vgRadius">Radius: <span id="vgRadiusValue"></span></label>
+      <input type="range" id="vgRadius" min="0" max="1" step="0.02" value="0.6">
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label for="vgSoftness">Softness: <span id="vgSoftnessValue"></span></label>
+      <input type="range" id="vgSoftness" min="0.05" max="1.5" step="0.02" value="0.6">
+    </div>
+    <div class="field">
+      <label for="vgColor">Color</label>
+      <input type="color" id="vgColor" value="#000000">
+    </div>
+  </div>
+  <div class="actions">
+    <button class="primary" id="vgApplyBtn" type="button">Apply</button>
+    <button class="secondary" id="vgCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
 <script type="module" src="/main.js"></script>
 </body>
 </html>

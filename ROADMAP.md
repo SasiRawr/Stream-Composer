@@ -19,9 +19,11 @@ this project:
 ## Where things stand (2026-08-05)
 
 - `app/` ("Popup Slide Editor") — v0.1.0, human-tested, stable.
-- `scene-composer/` ("Scene Composer") — v0.8.0, 8 image-editing
+- `scene-composer/` ("Scene Composer") — v0.9.0, 9 image-editing
   features shipped (Chroma Key, Crop, Pad, Color Adjust, Outline, Blur,
-  Flip/Rotate, Sharpen), not yet human-tested.
+  Flip/Rotate, Sharpen, Vignette), not yet human-tested. The two
+  standalone modules planned for v0.8.0/v0.9.0 are both done — next up
+  is v1.0.0 (see below).
 - Two apps, two separate version numbers — this ends at v1.0.0 (see below).
 
 ## v0.8.0 – v0.9.0: two more standalone modules

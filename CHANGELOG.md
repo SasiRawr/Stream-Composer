@@ -4,6 +4,15 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v0.9.0 — 2026-08-05 (Scene Composer)
+
+### Added
+- **Vignette** on `image` items — strength, radius, softness, and tint
+  color controls with a live preview. Darkens (or tints) the image
+  toward its edges.
+
+Popup Slide Editor unchanged in this release (still v0.1.0).
+
 ## v0.8.0 — 2026-08-05 (Scene Composer)
 
 ### Added

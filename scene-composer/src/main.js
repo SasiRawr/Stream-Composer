@@ -21,6 +21,7 @@ import { applyOutline } from './outline.js';
 import { applyBlur } from './blur.js';
 import { applyFlip, applyRotate } from './transform.js';
 import { applySharpen } from './sharpen.js';
+import { applyVignette } from './vignette.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -378,6 +379,7 @@ function renderImageProperties(item, body) {
     <button class="secondary block" id="pf-outline" type="button">Outline…</button>
     <button class="secondary block" id="pf-blur" type="button">Blur…</button>
     <button class="secondary block" id="pf-sharpen" type="button">Sharpen…</button>
+    <button class="secondary block" id="pf-vignette" type="button">Vignette…</button>
     <div class="button-row">
       <button class="secondary" id="pf-flipH" type="button" title="Flip Horizontal">Flip ↔</button>
       <button class="secondary" id="pf-flipV" type="button" title="Flip Vertical">Flip ↕</button>
@@ -398,6 +400,7 @@ function renderImageProperties(item, body) {
   document.getElementById('pf-outline').addEventListener('click', () => openOutlineDialog(item));
   document.getElementById('pf-blur').addEventListener('click', () => openBlurDialog(item));
   document.getElementById('pf-sharpen').addEventListener('click', () => openSharpenDialog(item));
+  document.getElementById('pf-vignette').addEventListener('click', () => openVignetteDialog(item));
   document.getElementById('pf-flipH').addEventListener('click', () => applyInstantTransform(item, (img) => applyFlip(img, { horizontal: true }), 'flipped'));
   document.getElementById('pf-flipV').addEventListener('click', () => applyInstantTransform(item, (img) => applyFlip(img, { vertical: true }), 'flipped'));
   document.getElementById('pf-rotateCW').addEventListener('click', () => applyInstantTransform(item, (img) => applyRotate(img, 90), 'rotated'));
@@ -985,6 +988,86 @@ function wireSharpenDialog() {
   });
 }
 
+// ---- VIGNETTE DIALOG -------------------------------------------------------
+let vgItem = null;
+let vgOriginalImageData = null;
+
+function vgCurrentOptions() {
+  const hex = document.getElementById('vgColor').value;
+  return {
+    strength: parseFloat(document.getElementById('vgStrength').value),
+    radius: parseFloat(document.getElementById('vgRadius').value),
+    softness: parseFloat(document.getElementById('vgSoftness').value),
+    color: {
+      r: parseInt(hex.slice(1, 3), 16),
+      g: parseInt(hex.slice(3, 5), 16),
+      b: parseInt(hex.slice(5, 7), 16),
+    },
+  };
+}
+
+function vgRedrawPreview() {
+  const canvas = document.getElementById('vgPreviewCanvas');
+  const ctx = canvas.getContext('2d');
+  const result = applyVignette(vgOriginalImageData, vgCurrentOptions());
+  ctx.putImageData(new ImageData(result.data, result.width, result.height), 0, 0);
+}
+
+async function openVignetteDialog(item) {
+  vgItem = item;
+  try {
+    vgOriginalImageData = await loadItemImageData(item);
+  } catch (err) {
+    setStatus('Couldn\'t load image for vignette: ' + err, 'err');
+    return;
+  }
+
+  const canvas = document.getElementById('vgPreviewCanvas');
+  canvas.width = vgOriginalImageData.width;
+  canvas.height = vgOriginalImageData.height;
+
+  document.getElementById('vgStrength').value = 0.5;
+  document.getElementById('vgStrengthValue').textContent = '0.5';
+  document.getElementById('vgRadius').value = 0.6;
+  document.getElementById('vgRadiusValue').textContent = '0.6';
+  document.getElementById('vgSoftness').value = 0.6;
+  document.getElementById('vgSoftnessValue').textContent = '0.6';
+  document.getElementById('vgColor').value = '#000000';
+  vgRedrawPreview();
+
+  document.getElementById('vignetteDialog').showModal();
+}
+
+function wireVignetteDialog() {
+  document.getElementById('vgStrength').addEventListener('input', () => {
+    document.getElementById('vgStrengthValue').textContent = document.getElementById('vgStrength').value;
+    vgRedrawPreview();
+  });
+  document.getElementById('vgRadius').addEventListener('input', () => {
+    document.getElementById('vgRadiusValue').textContent = document.getElementById('vgRadius').value;
+    vgRedrawPreview();
+  });
+  document.getElementById('vgSoftness').addEventListener('input', () => {
+    document.getElementById('vgSoftnessValue').textContent = document.getElementById('vgSoftness').value;
+    vgRedrawPreview();
+  });
+  document.getElementById('vgColor').addEventListener('input', vgRedrawPreview);
+
+  document.getElementById('vgCancelBtn').addEventListener('click', () => document.getElementById('vignetteDialog').close());
+
+  document.getElementById('vgApplyBtn').addEventListener('click', async () => {
+    const result = applyVignette(vgOriginalImageData, vgCurrentOptions());
+    try {
+      const outputPath = await saveProcessedImageForItem(vgItem, result, 'vignetted');
+      setStatus('Vignette applied — saved to ' + outputPath, 'ok');
+    } catch (err) {
+      setStatus('Couldn\'t save vignetted image: ' + err, 'err');
+      return;
+    }
+    document.getElementById('vignetteDialog').close();
+  });
+}
+
 function renderPopupSlideProperties(item, body) {
   const p = item.props;
   body.innerHTML = `
@@ -1133,6 +1216,7 @@ window.addEventListener('DOMContentLoaded', () => {
   wireOutlineDialog();
   wireBlurDialog();
   wireSharpenDialog();
+  wireVignetteDialog();
   els.openProjectBtn.addEventListener('click', openProject);
   els.saveProjectBtn.addEventListener('click', saveProject);
   els.bakeBtn.addEventListener('click', bakeProject);
