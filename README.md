@@ -5,6 +5,8 @@ Photoshop, GIMP, or paywalled online editor required.
 
 **[Download the latest release](https://github.com/SasiRawr/Stream-Composer/releases/latest)** — see [CHANGELOG.md](CHANGELOG.md) for what's new in each version.
 
+[![Donate via PayPal](https://raw.githubusercontent.com/SasiRawr/Stream-Composer/main/donate-button.svg)](https://www.paypal.com/donate/?hosted_button_id=4GXAKQT5XWVSW)
+
 ## What's in this repo
 
 > **v1.0.0 merge in progress.** `app/` (Popup Slide Editor) is being

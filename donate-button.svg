@@ -1,0 +1,30 @@
+<svg width="300" height="80" viewBox="0 0 300 80" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Donate via PayPal</title>
+  <desc>TheNerdyBox donation button linking to PayPal</desc>
+
+  <defs>
+    <clipPath id="btnClip">
+      <rect x="0" y="0" width="300" height="80" rx="14"/>
+    </clipPath>
+  </defs>
+
+  <!-- Button background -->
+  <rect x="0" y="0" width="300" height="80" rx="14" fill="#6B5ED6"/>
+  <!-- Button border -->
+  <rect x="0" y="0" width="300" height="80" rx="14" fill="none" stroke="#8576E8" stroke-width="1.5"/>
+
+  <!-- NB icon frame (left side) -->
+  <rect x="12" y="15" width="50" height="50" rx="10" fill="none" stroke="#A99FEE" stroke-width="1.2"/>
+  <!-- NB letters -->
+  <text x="37" y="36" font-family="'Inter','Segoe UI',sans-serif" font-size="10" font-weight="700" fill="#D0C8FF" text-anchor="middle" letter-spacing="1">NB</text>
+  <!-- Rounded square inside icon (mimicking logo shape) -->
+  <rect x="20" y="40" width="28" height="20" rx="5" fill="none" stroke="#D0C8FF" stroke-width="1.2"/>
+  <!-- Coral dot (top-right of NB icon) -->
+  <rect x="44" y="11" width="14" height="14" rx="3.5" fill="#F06040"/>
+
+  <!-- Main label -->
+  <text x="76" y="38" font-family="'Inter','Segoe UI',sans-serif" font-size="16" font-weight="700" fill="#FFFFFF" letter-spacing="0.3">Support TheNerdyBox</text>
+  <!-- Sub label -->
+  <text x="76" y="58" font-family="'Inter','Segoe UI',sans-serif" font-size="11" font-weight="400" fill="#C4B8F5" letter-spacing="1">via PayPal  ♥</text>
+
+</svg>
