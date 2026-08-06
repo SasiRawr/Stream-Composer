@@ -20,6 +20,7 @@ import { applyColorAdjustments } from './coloradjust.js';
 import { applyOutline } from './outline.js';
 import { applyBlur } from './blur.js';
 import { applyFlip, applyRotate } from './transform.js';
+import { applySharpen } from './sharpen.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -376,6 +377,7 @@ function renderImageProperties(item, body) {
     <button class="secondary block" id="pf-colorAdjust" type="button">Color Adjust…</button>
     <button class="secondary block" id="pf-outline" type="button">Outline…</button>
     <button class="secondary block" id="pf-blur" type="button">Blur…</button>
+    <button class="secondary block" id="pf-sharpen" type="button">Sharpen…</button>
     <div class="button-row">
       <button class="secondary" id="pf-flipH" type="button" title="Flip Horizontal">Flip ↔</button>
       <button class="secondary" id="pf-flipV" type="button" title="Flip Vertical">Flip ↕</button>
@@ -395,6 +397,7 @@ function renderImageProperties(item, body) {
   document.getElementById('pf-colorAdjust').addEventListener('click', () => openColorAdjustDialog(item));
   document.getElementById('pf-outline').addEventListener('click', () => openOutlineDialog(item));
   document.getElementById('pf-blur').addEventListener('click', () => openBlurDialog(item));
+  document.getElementById('pf-sharpen').addEventListener('click', () => openSharpenDialog(item));
   document.getElementById('pf-flipH').addEventListener('click', () => applyInstantTransform(item, (img) => applyFlip(img, { horizontal: true }), 'flipped'));
   document.getElementById('pf-flipV').addEventListener('click', () => applyInstantTransform(item, (img) => applyFlip(img, { vertical: true }), 'flipped'));
   document.getElementById('pf-rotateCW').addEventListener('click', () => applyInstantTransform(item, (img) => applyRotate(img, 90), 'rotated'));
@@ -919,6 +922,69 @@ function wireBlurDialog() {
   });
 }
 
+// ---- SHARPEN DIALOG -------------------------------------------------------
+let shItem = null;
+let shOriginalImageData = null;
+
+function shRedrawPreview() {
+  const canvas = document.getElementById('shPreviewCanvas');
+  const ctx = canvas.getContext('2d');
+  const amount = parseFloat(document.getElementById('shAmount').value);
+  const radius = parseFloat(document.getElementById('shRadius').value);
+  const result = applySharpen(shOriginalImageData, { amount, radius });
+  ctx.putImageData(new ImageData(result.data, result.width, result.height), 0, 0);
+}
+
+async function openSharpenDialog(item) {
+  shItem = item;
+  try {
+    shOriginalImageData = await loadItemImageData(item);
+  } catch (err) {
+    setStatus('Couldn\'t load image for sharpen: ' + err, 'err');
+    return;
+  }
+
+  const canvas = document.getElementById('shPreviewCanvas');
+  canvas.width = shOriginalImageData.width;
+  canvas.height = shOriginalImageData.height;
+
+  document.getElementById('shAmount').value = 1;
+  document.getElementById('shAmountValue').textContent = '1';
+  document.getElementById('shRadius').value = 2;
+  document.getElementById('shRadiusValue').textContent = '2';
+  shRedrawPreview();
+
+  document.getElementById('sharpenDialog').showModal();
+}
+
+function wireSharpenDialog() {
+  document.getElementById('shAmount').addEventListener('input', () => {
+    document.getElementById('shAmountValue').textContent = document.getElementById('shAmount').value;
+    shRedrawPreview();
+  });
+
+  document.getElementById('shRadius').addEventListener('input', () => {
+    document.getElementById('shRadiusValue').textContent = document.getElementById('shRadius').value;
+    shRedrawPreview();
+  });
+
+  document.getElementById('shCancelBtn').addEventListener('click', () => document.getElementById('sharpenDialog').close());
+
+  document.getElementById('shApplyBtn').addEventListener('click', async () => {
+    const amount = parseFloat(document.getElementById('shAmount').value);
+    const radius = parseFloat(document.getElementById('shRadius').value);
+    const result = applySharpen(shOriginalImageData, { amount, radius });
+    try {
+      const outputPath = await saveProcessedImageForItem(shItem, result, 'sharpened');
+      setStatus('Sharpen applied — saved to ' + outputPath, 'ok');
+    } catch (err) {
+      setStatus('Couldn\'t save sharpened image: ' + err, 'err');
+      return;
+    }
+    document.getElementById('sharpenDialog').close();
+  });
+}
+
 function renderPopupSlideProperties(item, body) {
   const p = item.props;
   body.innerHTML = `
@@ -1066,6 +1132,7 @@ window.addEventListener('DOMContentLoaded', () => {
   wireColorAdjustDialog();
   wireOutlineDialog();
   wireBlurDialog();
+  wireSharpenDialog();
   els.openProjectBtn.addEventListener('click', openProject);
   els.saveProjectBtn.addEventListener('click', saveProject);
   els.bakeBtn.addEventListener('click', bakeProject);

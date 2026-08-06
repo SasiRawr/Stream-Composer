@@ -261,6 +261,33 @@
   </div>
 </dialog>
 
+<!--
+  Sharpen dialog: amount + radius sliders with a live preview. Boosts
+  local contrast so edges read as crisper - the opposite of Blur. Same
+  non-destructive pattern - writes a new "<id>-sharpened.png" rather than
+  touching the original.
+-->
+<dialog id="sharpenDialog" class="wide-dialog">
+  <h2>Sharpen</h2>
+  <div class="ck-preview-wrap">
+    <canvas id="shPreviewCanvas"></canvas>
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label for="shAmount">Amount: <span id="shAmountValue"></span></label>
+      <input type="range" id="shAmount" min="0" max="3" step="0.1" value="1">
+    </div>
+    <div class="field">
+      <label for="shRadius">Radius: <span id="shRadiusValue"></span>px</label>
+      <input type="range" id="shRadius" min="1" max="10" step="1" value="2">
+    </div>
+  </div>
+  <div class="actions">
+    <button class="primary" id="shApplyBtn" type="button">Apply</button>
+    <button class="secondary" id="shCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
 <script type="module" src="/main.js"></script>
 </body>
 </html>
