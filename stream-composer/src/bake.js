@@ -15,6 +15,7 @@
 
 import { platformIconSvg } from './popup-slide-icons.js';
 import { buildPopupSlideScript } from './popup-slide-engine.js';
+import { buildChatOverlayScript } from './chat-tts-engine.js';
 
 // Escapes text for safe use inside an HTML attribute or text node.
 function escapeHtml(s) {
@@ -163,6 +164,42 @@ function renderPopupSlideItem(item, instanceId, assetPathsById) {
   return { html, script };
 }
 
+// ---- CHAT + TTS OVERLAY -------------------------------------------------
+// A live, continuously-running item — connects to whichever chat platforms
+// are enabled and reads new messages aloud via TTS once baked. Unlike every
+// other item type, this one makes real outbound network connections at
+// runtime — see chat-tts-engine.js's header comment for the full
+// verification caveats (Twitch's anonymous IRC login is a widely-used but
+// undocumented convention; Kick's connector needs a real Pusher app key
+// filled in before it will work at all).
+function renderChatOverlayItem(item, instanceId) {
+  const html = `
+<div class="item item-chat-overlay" style="${wrapperStyle(item)} overflow:hidden;">
+  <style>
+    #${instanceId}-feed {
+      display: flex; flex-direction: column-reverse; gap: 8px;
+      width: 100%; height: 100%; padding: 8px; box-sizing: border-box;
+      font-family: 'Inter', sans-serif;
+    }
+    #${instanceId}-feed .chat-message {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(10,10,18,0.75); border-radius: 10px;
+      padding: 8px 12px; animation: ${instanceId}-fade-in 0.25s ease;
+    }
+    #${instanceId}-feed .chat-badge { width: 18px; height: 18px; flex-shrink: 0; }
+    #${instanceId}-feed .chat-username { font-weight: 700; color: #a594ff; margin-right: 4px; }
+    #${instanceId}-feed .chat-text { color: #f2f1f9; word-break: break-word; }
+    @keyframes ${instanceId}-fade-in {
+      from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; }
+    }
+  </style>
+  <div id="${instanceId}-feed"></div>
+</div>`;
+
+  const script = buildChatOverlayScript(instanceId, item.props);
+  return { html, script };
+}
+
 // ---- ASSET COLLECTION -------------------------------------------------
 // Every `image` item needs its source file copied into the output's
 // assets/ folder, and so does every popup-slide item's slide that uses a
@@ -209,6 +246,7 @@ export function buildSceneHtml(project, assetPathsById) {
     if (item.type === 'frame') return renderFrameItem(item);
     if (item.type === 'image') return renderImageItem(item, assetPathsById[item.id] || '');
     if (item.type === 'popup-slide') return renderPopupSlideItem(item, `popup-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
+    if (item.type === 'chat-overlay') return renderChatOverlayItem(item, `chat-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
     return { html: '', script: '' };
   });
 

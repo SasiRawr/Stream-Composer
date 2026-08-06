@@ -89,6 +89,24 @@ const solidProject = baseProject([{
 const solidHtml = buildSceneHtml(solidProject, {});
 assert(solidHtml.includes('background:#123456;') && !solidHtml.includes('linear-gradient'), 'a solid-filled frame still emits a plain background color, not a gradient');
 
+// ---- buildSceneHtml: chat-overlay item ----
+const chatProject = baseProject([{
+  id: 'c1', type: 'chat-overlay', x: 0, y: 0, width: 420, height: 600, rotation: 0, zIndex: 0,
+  props: {
+    platforms: [
+      { key: 'twitch', enabled: true, channelName: 'somestreamer' },
+      { key: 'kick', enabled: false, channelName: '' },
+    ],
+    ttsEnabled: true, ttsRate: 1, ttsVolume: 1,
+    filterCommands: true, maxVisibleMessages: 3, messageDisplayMs: 6000,
+  },
+}]);
+const chatHtml = buildSceneHtml(chatProject, {});
+assert(chatHtml.includes('item-chat-overlay'), 'the chat-overlay item is rendered');
+assert(chatHtml.includes('chat-c1-0-feed'), "the chat-overlay item's feed element uses an instance-scoped id (got a match)");
+assert(chatHtml.includes('connectTwitch("somestreamer")'), "an enabled platform's connect call reaches the baked output");
+assert(!chatHtml.includes('connectKick("'), 'a disabled platform does not get a connect call in the baked output');
+
 // ---- buildSceneHtml: items sort by zIndex regardless of array order ----
 const outOfOrder = baseProject([
   { id: 'top', type: 'frame', x: 0, y: 0, width: 10, height: 10, rotation: 0, zIndex: 5,

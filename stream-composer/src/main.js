@@ -28,6 +28,7 @@ import { STARTER_TEMPLATES } from './starter-kit/manifest.js';
 import { STINGER_TEMPLATES, defaultStingerProps } from './stinger-templates.js';
 import { renderStingerFrame } from './stinger-render.js';
 import { checkAlphaSupport, exportStinger } from './stinger-export.js';
+import { CHAT_PLATFORMS, visibleChatPlatforms } from './chat-platforms.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -92,12 +93,25 @@ function defaultPropsFor(type) {
       colors: { void: '#0a0a12', violet: '#7c5cff', violetSoft: '#a594ff', ink: '#f2f1f9', mute: '#918eae' },
     };
   }
+  if (type === 'chat-overlay') {
+    return {
+      platforms: CHAT_PLATFORMS.map((p) => ({ key: p.key, enabled: false, channelName: '' })),
+      ttsEnabled: true,
+      ttsRate: 1,
+      ttsVolume: 1,
+      filterCommands: true,
+      maxVisibleMessages: 3,
+      messageDisplayMs: 6000,
+      showAdultPlatforms: false,
+    };
+  }
   return {};
 }
 
 function defaultSizeFor(type) {
   if (type === 'popup-slide') return { width: 640, height: 220 }; // matches v1's established canvas convention
   if (type === 'frame') return { width: 480, height: 270 };       // a reasonable webcam-frame-ish starting box
+  if (type === 'chat-overlay') return { width: 420, height: 600 }; // a tall message-feed shape
   return { width: 300, height: 300 };
 }
 
@@ -324,8 +338,18 @@ function frameFillValue(p) {
   return p.fillColor;
 }
 
+// Live/dynamic item types (popup-slide, chat-overlay) have no real visual
+// preview on the editing canvas — their actual behavior only exists in the
+// baked output — so they each get a dashed placeholder box in their own
+// accent color, purely so different item types are visually distinguishable
+// at a glance while arranging a scene.
+const PLACEHOLDER_ACCENTS = {
+  'popup-slide': '#a594ff',
+  'chat-overlay': '#35e6c4',
+};
+
 function createRectFabricObject(item) {
-  const isPopupSlide = item.type === 'popup-slide';
+  const accent = PLACEHOLDER_ACCENTS[item.type];
   const p = item.props;
   const rect = new Rect({
     left: item.x * displayScale,
@@ -336,12 +360,12 @@ function createRectFabricObject(item) {
     scaleX: 1,
     scaleY: 1,
     strokeUniform: true,
-    fill: isPopupSlide ? 'rgba(124,92,255,0.15)' : frameFillValue(p),
-    stroke: isPopupSlide ? '#a594ff' : p.strokeColor,
-    strokeWidth: isPopupSlide ? 2 : p.strokeWidth,
-    strokeDashArray: isPopupSlide ? [8, 5] : null,
-    rx: isPopupSlide ? 10 : p.cornerRadius,
-    ry: isPopupSlide ? 10 : p.cornerRadius,
+    fill: accent ? 'rgba(124,92,255,0.15)' : frameFillValue(p),
+    stroke: accent || p.strokeColor,
+    strokeWidth: accent ? 2 : p.strokeWidth,
+    strokeDashArray: accent ? [8, 5] : null,
+    rx: accent ? 10 : p.cornerRadius,
+    ry: accent ? 10 : p.cornerRadius,
   });
   return rect;
 }
@@ -471,6 +495,7 @@ function renderPropertiesPanel() {
   if (item.type === 'frame') return renderFrameProperties(item, body);
   if (item.type === 'image') return renderImageProperties(item, body);
   if (item.type === 'popup-slide') return renderPopupSlideProperties(item, body);
+  if (item.type === 'chat-overlay') return renderChatOverlayProperties(item, body);
 }
 
 function renderFrameProperties(item, body) {
@@ -1447,6 +1472,86 @@ function renderPopupSlideProperties(item, body) {
   document.getElementById('pf-pauseSeconds').addEventListener('change', applyGeneral);
 }
 
+function renderChatOverlayProperties(item, body) {
+  const p = item.props;
+
+  function renderPlatformList() {
+    return visibleChatPlatforms(p.showAdultPlatforms).map((platform) => {
+      let entry = p.platforms.find((pl) => pl.key === platform.key);
+      if (!entry) {
+        entry = { key: platform.key, enabled: false, channelName: '' }; // tolerate a platform added after this project was saved
+        p.platforms.push(entry);
+      }
+      return `
+        <div class="slide-card">
+          <div class="slide-card-head"><span>${platform.label.toUpperCase()}</span></div>
+          <div class="field">
+            <label><input type="checkbox" data-platform="${platform.key}" data-field="enabled" ${entry.enabled ? 'checked' : ''}> Enable</label>
+          </div>
+          <div class="field">
+            <label>Channel name</label>
+            <input type="text" data-platform="${platform.key}" data-field="channelName" value="${escapeHtml(entry.channelName)}">
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function wirePlatformInputs() {
+    document.getElementById('pf-chatPlatformList').querySelectorAll('input').forEach((el) => {
+      el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', (e) => {
+        const key = e.target.getAttribute('data-platform');
+        const field = e.target.getAttribute('data-field');
+        const entry = p.platforms.find((pl) => pl.key === key);
+        if (!entry) return;
+        entry[field] = field === 'enabled' ? e.target.checked : e.target.value;
+      });
+    });
+  }
+
+  body.innerHTML = `
+    <div class="field"><label>Chat platforms</label></div>
+    <div id="pf-chatPlatformList">${renderPlatformList()}</div>
+    <div class="field">
+      <label><input type="checkbox" id="pf-showAdultPlatforms" ${p.showAdultPlatforms ? 'checked' : ''}> Show adult-platform options</label>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="pf-ttsEnabled" ${p.ttsEnabled ? 'checked' : ''}> Read messages aloud (TTS)</label>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Speech rate</label><input type="range" id="pf-ttsRate" min="0.5" max="2" step="0.1" value="${p.ttsRate}"></div>
+      <div class="field"><label>Volume</label><input type="range" id="pf-ttsVolume" min="0" max="1" step="0.05" value="${p.ttsVolume}"></div>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="pf-filterCommands" ${p.filterCommands ? 'checked' : ''}> Skip messages starting with "!"</label>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Max visible messages</label><input type="number" id="pf-maxVisibleMessages" min="1" max="10" value="${p.maxVisibleMessages}"></div>
+      <div class="field"><label>Message display (sec)</label><input type="number" id="pf-messageDisplaySeconds" min="1" max="60" step="0.5" value="${p.messageDisplayMs / 1000}"></div>
+    </div>
+    <div class="hint">Chat connections only run in the baked overlay (in OBS) — there's no live preview of real messages here in the editor.</div>
+  `;
+  wirePlatformInputs();
+
+  document.getElementById('pf-showAdultPlatforms').addEventListener('change', (e) => {
+    p.showAdultPlatforms = e.target.checked;
+    document.getElementById('pf-chatPlatformList').innerHTML = renderPlatformList();
+    wirePlatformInputs();
+  });
+
+  const applyGeneral = () => {
+    p.ttsEnabled = document.getElementById('pf-ttsEnabled').checked;
+    p.ttsRate = parseFloat(document.getElementById('pf-ttsRate').value) || 1;
+    p.ttsVolume = parseFloat(document.getElementById('pf-ttsVolume').value);
+    if (Number.isNaN(p.ttsVolume)) p.ttsVolume = 1;
+    p.filterCommands = document.getElementById('pf-filterCommands').checked;
+    p.maxVisibleMessages = parseInt(document.getElementById('pf-maxVisibleMessages').value, 10) || 3;
+    p.messageDisplayMs = Math.round((parseFloat(document.getElementById('pf-messageDisplaySeconds').value) || 6) * 1000);
+  };
+  ['pf-ttsEnabled', 'pf-ttsRate', 'pf-ttsVolume', 'pf-filterCommands', 'pf-maxVisibleMessages', 'pf-messageDisplaySeconds']
+    .forEach((id) => document.getElementById(id).addEventListener('change', applyGeneral));
+}
+
 function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -1842,6 +1947,7 @@ window.addEventListener('DOMContentLoaded', () => {
     addFrameBtn: document.getElementById('addFrameBtn'),
     addImageBtn: document.getElementById('addImageBtn'),
     addPopupSlideBtn: document.getElementById('addPopupSlideBtn'),
+    addChatOverlayBtn: document.getElementById('addChatOverlayBtn'),
     canvasSizeLabel: document.getElementById('canvasSizeLabel'),
     fabricCanvasEl: document.getElementById('fabricCanvas'),
     propertiesBody: document.getElementById('propertiesBody'),
@@ -1878,6 +1984,7 @@ window.addEventListener('DOMContentLoaded', () => {
   els.addFrameBtn.addEventListener('click', () => addItem('frame'));
   els.addImageBtn.addEventListener('click', addImageItem);
   els.addPopupSlideBtn.addEventListener('click', () => addItem('popup-slide'));
+  els.addChatOverlayBtn.addEventListener('click', () => addItem('chat-overlay'));
   els.deleteItemBtn.addEventListener('click', deleteSelectedItem);
 
   document.addEventListener('keydown', (e) => {
