@@ -4,6 +4,18 @@ All notable changes to Stream Composer are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.2.0 — 2026-08-06 (pre-release, pending verification)
+
+### Added
+- **+ Chat + TTS Overlay** item — connects to your live chat (Twitch and
+  Kick supported) and reads new messages aloud via free, fully-offline
+  text-to-speech, shown as an on-screen feed. First networked feature
+  in the app. YouTube/TikTok/Trovo/X were researched and deliberately
+  not built yet — see ROADMAP.md.
+- **Known gap**: Kick's connection needs a real Pusher app key that
+  isn't available without a live browser session against kick.com —
+  currently a placeholder in the code. Twitch works as-is.
+
 ## v1.1.0 — 2026-08-06 (pre-release, pending verification)
 
 ### Added

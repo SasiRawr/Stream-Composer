@@ -83,6 +83,18 @@ gone" are both true at once, no tension between them.
   the v1.x.0 list below — see that section for what it is and why a
   solid-key-color export mode is the reliable default, with true alpha
   transparency offered only as an experimental option on top.
+- **v1.2.0 (unified chat + TTS overlay, Twitch + Kick) is also already
+  built**, same discipline, on top of the still-unverified v1.1.0.
+  Published as a GitHub pre-release
+  (https://github.com/SasiRawr/Stream-Composer/releases/tag/v1.2.0),
+  staged for testing in `Tests/v1.2.0-chat-tts/`. Second item off the
+  v1.x.0 list below. **Known gap**: Kick's connector needs a real
+  Pusher app key that isn't available without a live browser session
+  against kick.com — currently a placeholder (`KICK_PUSHER_APP_KEY` in
+  `chat-tts-engine.js`), not a guessed value presented as fact. Twitch
+  should work as-is once tested. This is the riskiest-to-verify feature
+  shipped so far (the first one making real network connections) — see
+  the v1.2.0 plan for the full verification-honesty note.
 
 ## v0.8.0 – v0.9.0: two more standalone modules
 
@@ -154,8 +166,26 @@ standalone module/release — same incremental pattern as v0.2.0–v0.9.0 —
    explicit call: not a pass/fail bet on true alpha transparency —
    easier matters more than being different) plus an experimental true-
    alpha mode, only offered when a capability check confirms support.
-2. Unified multi-platform chat + TTS overlay — the reframed idea from
-   the research doc, using free browser-native `speechSynthesis`.
+2. **Unified chat + TTS overlay — built as v1.2.0, pending Harvey's
+   testing pass.** The reframed idea from the research doc, using free
+   browser-native `speechSynthesis`. Twitch + Kick shipped (both
+   zero-credential for the streamer — Twitch via widely-used but
+   undocumented anonymous IRC, Kick via the same unofficial Pusher feed
+   its own web client uses, pending a real app-key value). YouTube,
+   TikTok, Trovo, and X were all researched and explicitly deferred/
+   rejected — YouTube needs an API key (a shared embedded key would
+   create real abuse/quota-exhaustion risk across every user of the
+   app, so **when YouTube support is built, it's bring-your-own-key,
+   with an explicit disclaimer that Stream Composer doesn't supply keys
+   or offer direct account linking for it — Harvey's call, settled
+   ahead of time**), TikTok needs a backend this app doesn't have,
+   Trovo is shutting down entirely (June 30, 2026, regardless of API
+   quality), X has no real live-chat API surface below enterprise
+   pricing. A `showAdultPlatforms` toggle mechanism was built into the
+   platform picker per Harvey's ask (for platform options he doesn't
+   want shown by default, adult-streaming sites specifically named) —
+   no adult-platform connector exists yet, just the visibility
+   plumbing for whenever that gets its own scoping conversation.
 3. Asset library / reusable components.
 4. Template personalization (re-color/re-text without a full re-edit).
 5. Real OBS WebSocket automation for the Overlay Asset Workflow (auto-
