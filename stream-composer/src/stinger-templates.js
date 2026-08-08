@@ -144,6 +144,7 @@ export function defaultStingerProps() {
     durationMs: 1500,
     logoWidth: 400,
     logoHeight: 400,
+    logoScalePercent: 35, // logoHeight as a % of canvasHeight — see resizeStingerCanvas()
     primaryColor: '#7c5cff',
     keyColor: '#00ff00',
     exportMode: 'chromakey', // 'chromakey' | 'alpha' — see stinger-export.js

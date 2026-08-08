@@ -10,6 +10,7 @@
 // ============================================================================
 
 use base64::Engine;
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -95,11 +96,21 @@ fn preview_overlay(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .map_err(|err| err.to_string())
 }
 
+/// Copies plain text to the system clipboard — used for the "Copy OBS
+/// setup instructions" button. Goes through the clipboard-manager plugin
+/// rather than the frontend's raw `navigator.clipboard`, which isn't
+/// reliably permitted inside a WebView2 Tauri window.
+#[tauri::command]
+fn copy_to_clipboard(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    app.clipboard().write_text(text).map_err(|err| err.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             pick_project_folder,
             pick_image_file,
@@ -109,6 +120,7 @@ pub fn run() {
             write_binary_file,
             file_exists,
             preview_overlay,
+            copy_to_clipboard,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

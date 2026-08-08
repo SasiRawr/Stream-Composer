@@ -706,6 +706,17 @@ async function openChromaKeyDialog(item) {
   ctx.drawImage(img, 0, 0);
   ckOriginalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
+  ckResetControls();
+
+  dialog.showModal();
+}
+
+// Shared by openChromaKeyDialog (fresh state each time it's opened) and
+// the Reset button (same defaults, without closing the dialog).
+function ckResetControls() {
+  document.getElementById('ckSimilarity').value = 0.15;
+  document.getElementById('ckFeather').value = 0.1;
+  document.getElementById('ckSpill').value = 0.5;
   // Default key color: sample the top-left corner, a reasonable guess for
   // "probably background" until the user picks for real.
   const d = ckOriginalImageData.data;
@@ -713,8 +724,6 @@ async function openChromaKeyDialog(item) {
   ckUpdateSwatch();
   ckUpdateSliderLabels();
   ckRedrawPreview();
-
-  dialog.showModal();
 }
 
 function wireChromaKeyDialog() {
@@ -741,10 +750,11 @@ function wireChromaKeyDialog() {
   });
 
   document.getElementById('ckCancelBtn').addEventListener('click', () => dialog.close());
+  document.getElementById('ckResetBtn').addEventListener('click', ckResetControls);
 
   document.getElementById('ckApplyBtn').addEventListener('click', async () => {
     const canvas = document.getElementById('ckPreviewCanvas');
-    const outputPath = joinPath(dirname(ckItem.props.sourcePath), ckItem.id + '-keyed.png');
+    const outputPath = joinPath(editedImagesFolder(), ckItem.id + '-keyed.png');
     const dataUrl = canvas.toDataURL('image/png');
     const base64Data = dataUrl.substring(dataUrl.indexOf(',') + 1);
     try {
@@ -761,10 +771,16 @@ function wireChromaKeyDialog() {
   });
 }
 
-function dirname(path) {
-  const sep = path.includes('\\') ? '\\' : '/';
-  const idx = path.lastIndexOf(sep);
-  return idx === -1 ? path : path.slice(0, idx);
+// Where edited-image outputs (chroma key, crop, pad, and every other
+// effect below) get written — a hidden subfolder of the project, never
+// the folder the original source image was picked from. Editing an
+// image used to drop a `<id>-keyed.png`-style file right next to
+// whatever file the user imported (their Pictures folder, Desktop,
+// wherever), silently cluttering it; everything the app derives from a
+// source image now lives under the project instead, same non-pollution
+// pattern `.preview/` already uses for previews.
+function editedImagesFolder() {
+  return joinPath(projectFolder, '.edited-images');
 }
 
 // Reads an item's image off disk and returns { imageData, naturalWidth,
@@ -800,7 +816,7 @@ async function saveProcessedImageForItem(item, result, suffix) {
   tmpCanvas.getContext('2d').putImageData(new ImageData(result.data, result.width, result.height), 0, 0);
   const dataUrl = tmpCanvas.toDataURL('image/png');
   const base64Data = dataUrl.substring(dataUrl.indexOf(',') + 1);
-  const outputPath = joinPath(dirname(item.props.sourcePath), item.id + '-' + suffix + '.png');
+  const outputPath = joinPath(editedImagesFolder(), item.id + '-' + suffix + '.png');
   await invoke('write_binary_file', { path: outputPath, base64Data });
   item.props.sourcePath = outputPath;
   item.width = result.width;
@@ -1052,10 +1068,16 @@ async function openOutlineDialog(item) {
   canvas.width = olOriginalImageData.width;
   canvas.height = olOriginalImageData.height;
 
-  document.getElementById('olStrokeWidthValue').textContent = document.getElementById('olStrokeWidth').value;
-  olRedrawPreview();
+  olResetControls();
 
   document.getElementById('outlineDialog').showModal();
+}
+
+function olResetControls() {
+  document.getElementById('olStrokeWidth').value = 6;
+  document.getElementById('olStrokeColor').value = '#ffffff';
+  document.getElementById('olStrokeWidthValue').textContent = document.getElementById('olStrokeWidth').value;
+  olRedrawPreview();
 }
 
 function wireOutlineDialog() {
@@ -1065,6 +1087,7 @@ function wireOutlineDialog() {
   });
   document.getElementById('olStrokeColor').addEventListener('input', olRedrawPreview);
 
+  document.getElementById('olResetBtn').addEventListener('click', olResetControls);
   document.getElementById('olCancelBtn').addEventListener('click', () => document.getElementById('outlineDialog').close());
 
   document.getElementById('olApplyBtn').addEventListener('click', async () => {
@@ -1105,11 +1128,15 @@ async function openBlurDialog(item) {
   canvas.width = blOriginalImageData.width;
   canvas.height = blOriginalImageData.height;
 
+  blResetControls();
+
+  document.getElementById('blurDialog').showModal();
+}
+
+function blResetControls() {
   document.getElementById('blRadius').value = 4;
   document.getElementById('blRadiusValue').textContent = '4';
   blRedrawPreview();
-
-  document.getElementById('blurDialog').showModal();
 }
 
 function wireBlurDialog() {
@@ -1118,6 +1145,7 @@ function wireBlurDialog() {
     blRedrawPreview();
   });
 
+  document.getElementById('blResetBtn').addEventListener('click', blResetControls);
   document.getElementById('blCancelBtn').addEventListener('click', () => document.getElementById('blurDialog').close());
 
   document.getElementById('blApplyBtn').addEventListener('click', async () => {
@@ -1160,13 +1188,17 @@ async function openSharpenDialog(item) {
   canvas.width = shOriginalImageData.width;
   canvas.height = shOriginalImageData.height;
 
+  shResetControls();
+
+  document.getElementById('sharpenDialog').showModal();
+}
+
+function shResetControls() {
   document.getElementById('shAmount').value = 1;
   document.getElementById('shAmountValue').textContent = '1';
   document.getElementById('shRadius').value = 2;
   document.getElementById('shRadiusValue').textContent = '2';
   shRedrawPreview();
-
-  document.getElementById('sharpenDialog').showModal();
 }
 
 function wireSharpenDialog() {
@@ -1180,6 +1212,7 @@ function wireSharpenDialog() {
     shRedrawPreview();
   });
 
+  document.getElementById('shResetBtn').addEventListener('click', shResetControls);
   document.getElementById('shCancelBtn').addEventListener('click', () => document.getElementById('sharpenDialog').close());
 
   document.getElementById('shApplyBtn').addEventListener('click', async () => {
@@ -1235,6 +1268,12 @@ async function openVignetteDialog(item) {
   canvas.width = vgOriginalImageData.width;
   canvas.height = vgOriginalImageData.height;
 
+  vgResetControls();
+
+  document.getElementById('vignetteDialog').showModal();
+}
+
+function vgResetControls() {
   document.getElementById('vgStrength').value = 0.5;
   document.getElementById('vgStrengthValue').textContent = '0.5';
   document.getElementById('vgRadius').value = 0.6;
@@ -1243,8 +1282,6 @@ async function openVignetteDialog(item) {
   document.getElementById('vgSoftnessValue').textContent = '0.6';
   document.getElementById('vgColor').value = '#000000';
   vgRedrawPreview();
-
-  document.getElementById('vignetteDialog').showModal();
 }
 
 function wireVignetteDialog() {
@@ -1262,6 +1299,7 @@ function wireVignetteDialog() {
   });
   document.getElementById('vgColor').addEventListener('input', vgRedrawPreview);
 
+  document.getElementById('vgResetBtn').addEventListener('click', vgResetControls);
   document.getElementById('vgCancelBtn').addEventListener('click', () => document.getElementById('vignetteDialog').close());
 
   document.getElementById('vgApplyBtn').addEventListener('click', async () => {
@@ -1530,6 +1568,7 @@ function renderChatOverlayProperties(item, body) {
       <div class="field"><label>Message display (sec)</label><input type="number" id="pf-messageDisplaySeconds" min="1" max="60" step="0.5" value="${p.messageDisplayMs / 1000}"></div>
     </div>
     <div class="hint">Chat connections only run in the baked overlay (in OBS) — there's no live preview of real messages here in the editor.</div>
+    <div class="hint">After changing these settings and re-baking, OBS keeps showing the old version until you refresh it: right-click the Browser Source → Properties → "Refresh cache of current page".</div>
   `;
   wirePlatformInputs();
 
@@ -1773,16 +1812,21 @@ function stingerAnimLoop(now) {
   stingerAnimHandle = requestAnimationFrame(stingerAnimLoop);
 }
 
+// Recomputes logoWidth/logoHeight from the current "Logo size" slider
+// percentage, the canvas height, and the picked image's own aspect ratio
+// (or a square placeholder if none picked yet). Called whenever any of
+// those three inputs change — resolution, the slider, or the logo image.
+function recalcStingerLogoSize() {
+  const aspect = stingerLogoImage ? stingerLogoImage.naturalWidth / stingerLogoImage.naturalHeight : 1;
+  stingerProps.logoHeight = Math.round(stingerProps.canvasHeight * (stingerProps.logoScalePercent / 100));
+  stingerProps.logoWidth = Math.round(stingerProps.logoHeight * aspect);
+}
+
 async function resizeStingerCanvas() {
   const [width, height] = document.getElementById('stingerResolution').value.split('x').map((n) => parseInt(n, 10));
   stingerProps.canvasWidth = width;
   stingerProps.canvasHeight = height;
-
-  // Logo size is proportional to canvas height, preserving the actual
-  // picked image's aspect ratio (or a square placeholder if none picked).
-  const aspect = stingerLogoImage ? stingerLogoImage.naturalWidth / stingerLogoImage.naturalHeight : 1;
-  stingerProps.logoHeight = Math.round(height * 0.35);
-  stingerProps.logoWidth = Math.round(stingerProps.logoHeight * aspect);
+  recalcStingerLogoSize();
 
   const canvas = document.getElementById('stingerPreviewCanvas');
   canvas.width = width;
@@ -1814,6 +1858,8 @@ async function openStingerBuilderDialog() {
   document.getElementById('stingerKeyColorField').hidden = false;
   document.getElementById('stingerLogoStatus').textContent = 'No image chosen yet — the animation will still preview, just without a logo.';
   document.getElementById('stingerExportStatus').textContent = '';
+  document.getElementById('stingerLogoScale').value = String(stingerProps.logoScalePercent);
+  document.getElementById('stingerLogoScaleValue').textContent = String(stingerProps.logoScalePercent);
 
   await resizeStingerCanvas();
 
@@ -1895,6 +1941,12 @@ function wireStingerBuilderDialog() {
   document.getElementById('stingerResolution').addEventListener('change', resizeStingerCanvas);
   document.getElementById('stingerPrimaryColor').addEventListener('input', (e) => { stingerProps.primaryColor = e.target.value; });
 
+  document.getElementById('stingerLogoScale').addEventListener('input', (e) => {
+    stingerProps.logoScalePercent = parseInt(e.target.value, 10);
+    document.getElementById('stingerLogoScaleValue').textContent = e.target.value;
+    recalcStingerLogoSize();
+  });
+
   document.getElementById('stingerPickLogoBtn').addEventListener('click', async () => {
     const path = await invoke('pick_image_file');
     if (!path) return;
@@ -1975,7 +2027,7 @@ window.addEventListener('DOMContentLoaded', () => {
   els.bakeNewFolderBtn.addEventListener('click', () => bakeProject(true));
   document.getElementById('copyObsInstructionsBtn').addEventListener('click', async () => {
     try {
-      await navigator.clipboard.writeText(obsSetupInstructions());
+      await invoke('copy_to_clipboard', { text: obsSetupInstructions() });
       setStatus('OBS setup instructions copied to clipboard.', 'ok');
     } catch (err) {
       setStatus('Couldn\'t copy to clipboard: ' + err, 'err');

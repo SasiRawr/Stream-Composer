@@ -96,6 +96,105 @@ gone" are both true at once, no tension between them.
   shipped so far (the first one making real network connections) — see
   the v1.2.0 plan for the full verification-honesty note.
 
+## First real testing round: v1.0.0–v1.2.0 (2026-08-06)
+
+Harvey's first hands-on pass across all three pending pre-releases, notes
+in `Builds\Testing\Testing Notes\v1.0,v1.1,v1.2 test notes.txt`. Overall
+verdict: TTS "WORKS PERFECTLY", 10+ minutes of live chat connection with
+no disconnects, "we are in an absolutely phenomenal place for this
+project" — the issues below are refinements on a working foundation, not
+signs of a shaky one.
+
+**Real bugs found and fixed same-day:**
+- Every image-edit tool (Chroma Key, Crop, Pad, Color Adjust, Outline,
+  Blur, Sharpen, Vignette) was writing its processed output right next to
+  the original source file — silently cluttering whatever folder the
+  user picked the image from. Now writes to a hidden `.edited-images/`
+  folder inside the project, same non-pollution pattern `.preview/`
+  already used.
+- "Copy OBS setup instructions" used the raw `navigator.clipboard` Web
+  API, which isn't reliably permitted inside a Tauri/WebView2 window —
+  silently did nothing. Now goes through a proper `tauri-plugin-
+  clipboard-manager`-backed command, same "small explicit command"
+  pattern every other Rust-side operation in this app already uses.
+- Stinger export threw `TypeError: config.quality must be provided` for
+  both export modes — Mediabunny's `CanvasSource` config needs either
+  `quality` or `bitrate` and neither was ever set. Fixed with `quality:
+  new Quality('high')`.
+- Stinger Builder had no way to actually resize the logo — the
+  "Resolution" dropdown only controls the exported video's pixel
+  dimensions (and the preview is capped at 360px tall via CSS regardless,
+  so changing it visibly did nothing), while the logo itself was always
+  auto-sized to a fixed 35%-of-frame-height with no control over that
+  ratio. Added a real "Logo size" slider (5–100% of frame height).
+
+**Minor issues, also fixed same-day:**
+- No Reset control existed on any image-edit dialog except Color Adjust.
+  Added matching Reset buttons (and reset-on-open, for the two dialogs —
+  Chroma Key and Outline — that previously kept stale slider values
+  across re-opens) to Chroma Key, Outline, Blur, Sharpen, and Vignette.
+- The Windows `.exe` (NSIS) installer gave no indication it was
+  overwriting an existing install. Added an `installerHooks` pre-install
+  check (`src-tauri/windows/hooks.nsh`) that shows a one-time message
+  when an existing install is detected, before any files are touched.
+  Note: the app doesn't actually persist any user preferences yet (no
+  settings/appdata store exists) — the message says projects/files
+  outside the install folder are unaffected, not "preferences are kept,"
+  since that wouldn't be true yet. **Only covers the `.exe` installer** —
+  the `.msi` (WiX) installer's upgrade behavior is native Windows
+  Installer behavior, untouched, and Harvey's original report doesn't
+  specify which installer he used, so this needs a re-test on both.
+- Added an in-panel note on the Chat + TTS Overlay item that changed
+  settings require an OBS Browser Source cache refresh after re-baking
+  (right-click → Properties → "Refresh cache of current page") — Harvey
+  had to discover this by trial and error.
+
+None of the above has been re-verified by a real install/click-through
+yet — same standing rule as everything else in this project: automated
+tests + a clean build only prove it compiles and the pure logic is
+correct, not that the installer dialog reads right or the stinger logo
+actually looks good at 35% by default. Needs Harvey's next testing pass.
+
+**Suggestions raised, not yet built — backlog for future versions:**
+- **Global eyedropper** — a color-pick tool that can sample any pixel on
+  the screen, not just within a dialog's own preview canvas (raised
+  against Chroma Key specifically, but generally useful). Needs research
+  into what's available cross-platform inside a Tauri/WebView2 window —
+  not a trivial add, likely its own small scoping pass.
+- **Name scenes when baking** — currently baked output folders are
+  unnamed/generic; let the user give a scene a name at bake time.
+- **Starter Kit**: rename "Gradient Border" → "Gradient Background" (the
+  existing option reads as border-only but is more general than that),
+  and add a "ghost effect" mode — overlay a semi-transparent gradient on
+  top of a real image, not just a flat gradient fill. Also: make starter
+  kit items individually selectable (build all, or pick and choose)
+  rather than all-or-nothing.
+- **Stinger Builder, full editor controls** — beyond the logo-size slider
+  just added: rotation, movement/position, and general placement controls
+  inside the editor (not just centered/animated per-template), so a user
+  can actually art-direct the result instead of picking from fixed
+  templates. Also raised: importing a video file as the stinger's source
+  instead of a static image — either one with a pre-existing green-key
+  area, or with an eyedropper-style "mask this color" tool applied to
+  video frames. Also: pause/play and mute controls on the stinger preview
+  player (raised specifically so a repeating 3–5 second audio loop
+  doesn't become "maddening" during editing).
+- **Chat + TTS Overlay**: filter/exempt emote-only messages from being
+  read aloud, the same way "skip messages starting with !" already works
+  — needs a definition of "emote-only" per platform (Twitch has emote
+  metadata in IRC tags; Kick's equivalent needs checking). Voice
+  selection (a dropdown over `speechSynthesis.getVoices()`, rather than
+  always using the browser/OS default voice). A much bigger ask, **needs
+  Harvey directly, not something to build blind**: downloadable/curated
+  TTS voice models beyond what Windows ships (he's specifically heard
+  character-style voices — a C-3PO-style voice, an "airy kid" voice, a
+  raspy-voiced man — on sites like Tikfinity, and has logins that could
+  help identify and source the actual voice models). TikTok as a chat
+  platform — already a known, explicitly-deferred gap from the original
+  v1.2.0 plan (needs a Node-only signing-service library that doesn't
+  fit this app's no-backend runtime); re-flagged here since testing
+  surfaced the same ask independently.
+
 ## v0.8.0 – v0.9.0: two more standalone modules
 
 Same pattern as v0.2.0–v0.7.0: build, test, ship as separate releases.

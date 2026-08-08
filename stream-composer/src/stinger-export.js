@@ -29,7 +29,7 @@
 //   labeled experimental in the UI.
 // ============================================================================
 
-import { Output, WebMOutputFormat, BufferTarget, CanvasSource, canEncodeVideo } from 'mediabunny';
+import { Output, WebMOutputFormat, BufferTarget, CanvasSource, canEncodeVideo, Quality } from 'mediabunny';
 import { renderStingerFrame } from './stinger-render.js';
 
 // Quick one-time capability check — decides whether the dialog even offers
@@ -65,6 +65,11 @@ export async function exportStinger({ canvas, template, props, assets, fps = 30 
   const videoSource = new CanvasSource(canvas, {
     codec: 'vp9',
     alpha: isAlpha ? 'keep' : 'discard',
+    // Mediabunny requires either `quality` or `bitrate` on every encoding
+    // config — omitting both is what threw "config.quality must be
+    // provided." 'high' keeps stingers crisp; these are short (a few
+    // seconds), so file size isn't a real concern.
+    quality: new Quality('high'),
   });
   output.addVideoTrack(videoSource);
 

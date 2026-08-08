@@ -161,6 +161,7 @@
     </div>
   </div>
   <div class="actions">
+    <button class="secondary" id="ckResetBtn" type="button">Reset</button>
     <button class="primary" id="ckApplyBtn" type="button">Apply</button>
     <button class="secondary" id="ckCancelBtn" type="button">Cancel</button>
   </div>
@@ -264,6 +265,7 @@
     </div>
   </div>
   <div class="actions">
+    <button class="secondary" id="olResetBtn" type="button">Reset</button>
     <button class="primary" id="olApplyBtn" type="button">Apply</button>
     <button class="secondary" id="olCancelBtn" type="button">Cancel</button>
   </div>
@@ -286,6 +288,7 @@
     <input type="range" id="blRadius" min="0" max="30" step="1" value="4">
   </div>
   <div class="actions">
+    <button class="secondary" id="blResetBtn" type="button">Reset</button>
     <button class="primary" id="blApplyBtn" type="button">Apply</button>
     <button class="secondary" id="blCancelBtn" type="button">Cancel</button>
   </div>
@@ -313,6 +316,7 @@
     </div>
   </div>
   <div class="actions">
+    <button class="secondary" id="shResetBtn" type="button">Reset</button>
     <button class="primary" id="shApplyBtn" type="button">Apply</button>
     <button class="secondary" id="shCancelBtn" type="button">Cancel</button>
   </div>
@@ -349,6 +353,7 @@
     </div>
   </div>
   <div class="actions">
+    <button class="secondary" id="vgResetBtn" type="button">Reset</button>
     <button class="primary" id="vgApplyBtn" type="button">Apply</button>
     <button class="secondary" id="vgCancelBtn" type="button">Cancel</button>
   </div>
@@ -394,6 +399,11 @@
     </div>
   </div>
   <div class="hint" id="stingerLogoStatus">No image chosen yet — the animation will still preview, just without a logo.</div>
+
+  <div class="field">
+    <label for="stingerLogoScale">Logo size (<span id="stingerLogoScaleValue">35</span>% of frame height)</label>
+    <input type="range" id="stingerLogoScale" min="5" max="100" step="1" value="35">
+  </div>
 
   <div class="field">
     <label for="stingerPrimaryColor">Panel color (used by the Wipe template)</label>
