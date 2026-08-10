@@ -271,6 +271,11 @@ below and to any future voice-model work.
 
 ## Game Detector — renewed interest, concrete failure example (2026-08-10)
 
+**Escalated to top priority, same night** — "I want those plugins
+remade, tested and owned by us. DEFINITELY the game detector. Getting
+that working fully and top of the line is a new priority." Explicit
+instruction: work on this first, before anything else in this backlog.
+
 Harvey has actually used FabioZumbi12's `game-detector` OBS plugin (the
 one already forked under `SasiRawr` — GPL-2.0, genuinely abandoned, see
 above) and wants to focus on fixing it: "when it does work, it is a VERY
@@ -375,6 +380,50 @@ process-list buffer. All of this needs a real Windows machine with
 Steam/Epic/GOG/Ubisoft games installed to verify against — can't be
 confirmed as *fixed* from static reading alone, only diagnosed.
 
+### New feature, requested same night: tie a scene + source list to a game category
+
+Harvey's idea: when a game is detected, don't just switch the Twitch/
+Trovo category — also switch OBS to a specific **scene** (and that
+scene's source visibility list) tied to that game. E.g. "Marvel Rivals"
+detected → auto-switch to a "Marvel Rivals" scene with that game's
+specific overlay/webcam layout, instead of every game sharing one
+generic scene. Genuinely useful, not yet scoped in code terms — needs:
+a per-category-entry mapping to an OBS scene name (the plugin already
+talks to OBS's frontend API for other things, per `PluginMain.cpp`/
+`GameDetectorDock.cpp`, so scene-switching is architecturally
+plausible, not a new capability class); a settings-UI addition to the
+existing Category and Games List dialog to pick a scene per entry; and
+a decision on what happens when a detected game has no scene mapped
+(fall back to current scene? A configurable default?). Real scoping
+work for once there's an actual build environment to test against.
+
+### Admin-elevation hypothesis, raised same night by Harvey
+
+Harvey's own diagnosis, worth taking seriously: "I believe the issue
+comes from running OBS Studio as administrator and it might not be
+detecting games that are running... However, I HAVE to run OBS Studio
+as admin, because if I don't, my hotkeys for scene changes/transitions/
+foreground-game-capture don't work unless I'm running OBS as admin."
+Investigating this now (parallel research pass, same read-only clone) —
+whether elevation genuinely breaks this plugin's own process-scanning
+(separate question from the already-confirmed exe-heuristic bug above),
+whether his hotkey problem is an OBS-core UIPI issue unrelated to this
+plugin, and whether there's a real workaround for "needs admin for
+hotkeys" that doesn't require full elevation. Update this section once
+that comes back.
+
+### Build toolchain status, checked same night
+
+This machine has Visual Studio Build Tools 2022 installed (MSVC is
+available) but **no `cmake`**, and `game-detector`'s own `buildspec.json`
+needs a fresh multi-gigabyte fetch of OBS Studio's own source, prebuilt
+`obs-deps`, and Qt6 before a build is even possible — a genuinely bigger
+and riskier undertaking than anything else built for this project so
+far (new toolchain, multi-GB downloads, and still unverifiable without
+Harvey actually running OBS against real games afterward). Not started
+without checking with him first — real research and fix-planning work
+doesn't need the toolchain, so that's what's happening in the meantime.
+
 ## Ideas noted from Harvey's other reference screenshots (2026-08-10)
 
 Two more images landed in `_examples\` (`pngTuber example.png`,
@@ -403,6 +452,65 @@ scoped or built:
   frame suggests frame shape options beyond rounded-rectangle (diamond,
   hexagon, circle). Moderate scope: CSS `clip-path` in the baked output,
   a matching Fabric.js polygon in the editor canvas.
+
+## More ideas from Harvey, same night, later (2026-08-10) — not scoped, not built
+
+A second batch, in a live conversation rather than a "go to bed"
+handoff. Standing philosophy he stated explicitly here, worth keeping
+in mind for all of these: **"I want to make USEFUL plugins that people
+want or have been wanting that will integrate nicely and be discussed
+for their usefulness and what good they do for users."**
+
+- **Android tablet / Steam Deck as a stream controller** — his own
+  Elgato Stream Deck is an original (older) one, newer ones are pricey,
+  and he hasn't yet built one of the 3D-printed DIY Stream Deck/volume-
+  mixer designs he's found. Asked whether a cheap Android tablet or his
+  Steam Deck could act as a dynamic OBS scene/hotkey controller and/or
+  control his Elgato Key Lights. This is a genuinely different
+  direction from anything built so far — not an OBS plugin, more likely
+  a companion app or web control surface the tablet/Deck's browser hits
+  (OBS has its own WebSocket API — `obs-websocket` — already noted
+  elsewhere in this ROADMAP as a planned v1.x.0 feature; Elgato Key
+  Lights have their own local HTTP control API too, well-documented and
+  commonly integrated with). Not scoped — worth its own research pass
+  when there's time, since it's unrelated to the Game Detector work
+  that's the current priority.
+- **`nightbotsr-obsplugin` as a "BoxBot" chat-moderation angle** —
+  floated as something to think about, explicitly "not sure if it's
+  possible or worth it to integrate into our current app." Lower
+  priority, no action yet.
+- **Downloadable TTS voice models — reprioritized upward** — Harvey
+  confirmed `StreamElements-TwitchChat` is redundant with what's already
+  shipped (matches the earlier triage finding). Said he wants to work on
+  "the additional TTS voices too if possible" — but hasn't actually sent
+  the voice names/screenshots yet (he said he'd bring those "tomorrow,"
+  in an earlier message tonight). Still blocked on that actual data, not
+  on priority — ready to move the moment he sends it. Remember the
+  rebrand rule for whatever comes of this.
+- **`CameraDetection` — Harvey's own theory of what it does**: he thinks
+  it's meant to alert if the camera/audio/game capture stops working —
+  webcam frozen, audio not detected, game capture not detecting. Said
+  himself this is lower priority than Game Detector and TTS voices, and
+  he'll research it more before it's worth scoping.
+- **Chat mods / VIP identification** — a loose idea about using a chat-
+  moderation or VIP-tracking mod to identify VIPs for play-along
+  segments or direct communication during a stream. Not scoped, no
+  specific plugin identified yet.
+- **Minecraft server plugins as NerdyBox-branded in-house tools** —
+  Harvey/TheNerdyBox run their own Minecraft server (not Bukkit-based).
+  He wants to take some of FabioZumbi12's Minecraft plugins from the
+  Tier 2 list in the repo-review artifact (`RedProtect` — his biggest
+  project by stars, `UltimateChat`, etc. — see
+  https://claude.ai/code/artifact/1f1c8769-de3c-4fdd-949a-877fcc7eea91)
+  and brand them as NerdyBox's own, both to actually use on the server
+  and as a name-building exercise. Real open question before any of
+  this is scoped: those plugins are built for Bukkit/Spigot/Sponge —
+  compatibility with whatever server software TheNerdyBox actually runs
+  needs to be confirmed first (not researched yet).
+
+None of the above has been started — Game Detector is the explicit
+priority ("lets see what we can do first about perfecting the Game
+Detector thing"), these are logged so they're not lost, not queued next.
 
 ## v1.4.0: Background Generator (2026-08-10)
 
