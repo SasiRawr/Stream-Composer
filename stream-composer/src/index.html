@@ -34,6 +34,7 @@
     <button class="primary" id="bakeBtn" type="button" disabled>Bake Browser Source…</button>
     <button class="secondary" id="bakeNewFolderBtn" type="button" hidden>Bake to new folder…</button>
     <button class="secondary" id="stingerBuilderBtn" type="button" title="Build a short animated transition clip for OBS's Stinger Transition feature">Stinger Builder…</button>
+    <button class="secondary" id="backgroundGeneratorBtn" type="button" title="Generate a static background image for your stream — works with no project open">Background Generator…</button>
   </div>
 </div>
 <div class="subtitle" id="subtitle">No project open.</div>
@@ -456,6 +457,82 @@
     <button class="secondary" id="stingerCloseBtn" type="button">Close</button>
   </div>
   <div class="hint" id="stingerExportStatus"></div>
+</dialog>
+
+<!--
+  Background Generator dialog: a standalone tool, same "works with no
+  project open" pattern as the Stinger Builder — generates and exports a
+  static background image (solid / gradient / a photo with a
+  semi-transparent gradient overlay, the "ghost effect"). Not tied to any
+  Stream Composer project; the exported PNG is meant to be used directly
+  as an OBS Image Source, or as a starting point dropped into a project.
+-->
+<dialog id="backgroundGeneratorDialog" class="wide-dialog">
+  <h2>Background Generator</h2>
+  <div class="hint">Generate a static background image for your stream — solid color, a gradient, or a photo with a gradient overlaid on top.</div>
+
+  <div class="field-row">
+    <div class="field">
+      <label for="bgResolution">Resolution</label>
+      <select id="bgResolution">
+        <option value="1920x1080">1920 x 1080 (1080p)</option>
+        <option value="1280x720">1280 x 720 (720p)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="bgFillType">Type</label>
+      <select id="bgFillType">
+        <option value="solid">Solid color</option>
+        <option value="gradient">Gradient</option>
+        <option value="image-gradient">Photo + gradient overlay (ghost effect)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="field" id="bgSolidColorField">
+    <label for="bgSolidColor">Color</label>
+    <input type="color" id="bgSolidColor" value="#0a0a12">
+  </div>
+
+  <div class="field" id="bgImagePickField" hidden>
+    <label>Photo</label>
+    <button class="secondary block" id="bgPickImageBtn" type="button">Choose image…</button>
+    <div class="hint" id="bgImageStatus">No image chosen yet.</div>
+  </div>
+
+  <div id="bgGradientFields" hidden>
+    <div class="field-row">
+      <div class="field"><label>From</label><input type="color" id="bgGradientFrom" value="#7c5cff"></div>
+      <div class="field"><label>To</label><input type="color" id="bgGradientTo" value="#0a0a12"></div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="bgGradientStyle">Style</label>
+        <select id="bgGradientStyle">
+          <option value="linear">Linear</option>
+          <option value="radial">Radial</option>
+        </select>
+      </div>
+      <div class="field" id="bgGradientAngleField">
+        <label for="bgGradientAngle">Angle (degrees, 0 = to top, 90 = to right)</label>
+        <input type="number" id="bgGradientAngle" min="0" max="360" value="135">
+      </div>
+    </div>
+    <div class="field" id="bgOverlayOpacityField" hidden>
+      <label for="bgOverlayOpacity">Overlay strength (<span id="bgOverlayOpacityValue">55</span>%)</label>
+      <input type="range" id="bgOverlayOpacity" min="0" max="100" step="1" value="55">
+    </div>
+  </div>
+
+  <div class="ck-preview-wrap">
+    <canvas id="bgPreviewCanvas"></canvas>
+  </div>
+
+  <div class="actions">
+    <button class="primary" id="bgExportBtn" type="button">Export…</button>
+    <button class="secondary" id="bgCloseBtn" type="button">Close</button>
+  </div>
+  <div class="hint" id="bgExportStatus"></div>
 </dialog>
 
 <script type="module" src="/main.js"></script>

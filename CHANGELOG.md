@@ -4,6 +4,16 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.4.0 — 2026-08-10 (pre-release, pending verification)
+
+### Added
+- **+ Background Generator** — a new standalone tool (Topbar, works with
+  no project open, same pattern as the Stinger Builder): generates and
+  exports a static background image for your stream. Solid color, a
+  linear or radial gradient, or a photo with a semi-transparent gradient
+  overlaid on top ("ghost effect"). Exports a plain PNG, usable directly
+  as an OBS Image Source.
+
 ## v1.3.0 — 2026-08-10 (pre-release, pending verification)
 
 More requests from the v1.0-v1.2 testing pass — the ones that didn't

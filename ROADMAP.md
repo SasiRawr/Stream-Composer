@@ -187,11 +187,12 @@ release.
   against Chroma Key specifically, but generally useful). Needs research
   into what's available cross-platform inside a Tauri/WebView2 window —
   not a trivial add, likely its own small scoping pass.
-- **Starter Kit "ghost effect"** — overlay a semi-transparent gradient on
-  top of a real image (not just a flat gradient fill), for people who
-  want a photo-backed background instead of a pure gradient. Needs
-  actual design judgment on how the blend should look, so held back from
-  the v1.3.0 batch rather than guessing at it.
+- ~~**Starter Kit "ghost effect"**~~ — **built in v1.4.0**, but as the new
+  standalone **Background Generator** tool's "Photo + gradient overlay"
+  mode, not as a Starter Kit template — a static-image export tool fits
+  the actual ask ("a complete... editor or static image generator type
+  plugin") better than a canvas-item mode would have. See v1.4.0 section
+  below.
 - **Stinger Builder, full editor controls** — beyond the logo-size slider
   already shipped in v1.2.1: rotation, movement/position, and general
   placement controls inside the editor (not just centered/animated
@@ -249,6 +250,186 @@ before any of it becomes a version plan.
   the technical blockers already logged above (paid signing-service key,
   Node-only library), but is a real demand signal worth revisiting as a
   business decision with Harvey, not just a technical one.
+
+**Full repo list, 2026-08-10:** Harvey asked for a complete pass over
+`github.com/FabioZumbi12`'s repos so he can decide what to clone/fork —
+full triaged list (123 repos → 7 streaming/OBS-relevant, 39 unrelated
+Minecraft-era originals, 77 forks-of-others excluded as out of scope)
+published at https://claude.ai/code/artifact/1f1c8769-de3c-4fdd-949a-877fcc7eea91.
+Nothing cloned or forked beyond the 2 repos already under `SasiRawr`
+(`game-detector`, `TwitchChatOverlay`) — waiting on his call.
+
+## Standing rule: rebrand anything we take over (2026-08-10)
+
+Any dead/abandoned project, feature, or third-party asset we incorporate
+or improve on (FabioZumbi12's tools, downloadable TTS voice models if
+that becomes real) ships as a **sole, unique TheNerdyBox.com/SasiRawr
+product** — no upstream name, no "Developed by X" credit, no visible
+lineage anywhere user-facing. Full reasoning in the
+`feedback_rebrand-incorporated-projects` memory. Applies to `game-detector`
+below and to any future voice-model work.
+
+## Game Detector — renewed interest, concrete failure example (2026-08-10)
+
+Harvey has actually used FabioZumbi12's `game-detector` OBS plugin (the
+one already forked under `SasiRawr` — GPL-2.0, genuinely abandoned, see
+above) and wants to focus on fixing it: "when it does work, it is a VERY
+very useful thing to have and works great. But sometimes it doesn't work
+at all, or reports an incorrect game/category." He dropped real
+screenshots in `_examples\` (`game detector options.png`, `adjust game
+or category detection and exe detection.png`, `docked plugin in OBS
+Studio.png`, `optionally set manually.png`).
+
+What the screenshots actually show:
+- **A real live misdetection**: the docked panel shows Twitch stream
+  title "Back After a Long Break: Starting a New Marvel Rivals Season"
+  but detected category "Just Chatting" — a clear false negative, not
+  user error.
+- **The detection mechanism**: scans installed-game libraries (Steam,
+  Epic, GOG, Ubisoft Connect) into a Category/Executable mapping table,
+  refreshed on OBS startup and periodically (10 min default), then
+  matches against... something at runtime (the actual match trigger —
+  foreground window vs. running-process-list vs. something else — isn't
+  visible in these screenshots; needs reading the actual source once
+  it's cloned).
+- **A likely root cause, visible in the mapping table itself**: several
+  entries map to generic, easily-collided executable names rather than
+  the game's real distinguishing exe — row 2 is literally labeled
+  category "game" mapped to `cs2.exe` (looks like a broken/default
+  entry, not a real category name), "Dreadmyst" maps to `Launcher.exe`
+  (a name shared by countless other games' generic launchers), and
+  "RSDragonwilds" maps to `EpicOnlineServicesInstaller.exe` (an Epic
+  platform service process, not the actual game). Generic/shared exe
+  names are a plausible explanation for both "reports incorrect
+  game/category" (wrong table entry matches first) and "doesn't work at
+  all" (the real game's actual exe was never in the table because the
+  library scan only sees the launcher, not what the launcher spawns).
+- There's a manual override ("Set Category Manually" — title + category
+  fields, per-platform) as the existing fallback for when detection
+  fails, which is presumably what Harvey resorts to today.
+
+**Not being rebuilt blind tonight** — this is a native C++ OBS Studio
+plugin (completely different toolchain than this Tauri app), and
+detection-logic changes are exactly the kind of thing that can't be
+verified without launching real games against a real OBS install, the
+same "needs Harvey's live testing" caveat this project already applies
+to the Chat + TTS Overlay's live connections. What's safe and useful to
+do without him: read the actual `game-detector` source (already forked
+under `SasiRawr`) to find the real match logic and confirm/refute the
+generic-exe-name theory above, and turn that into a concrete, scoped fix
+plan — ready to build once he's back to help verify against real
+game launches. Per the rebrand rule above, if this gets rebuilt, it
+ships as a TheNerdyBox-branded tool, not "FabioZumbi12's Game Detector,
+improved."
+
+### Source read, 2026-08-10 — root cause confirmed, not just theorized
+
+Cloned the fork read-only and actually traced the detection code
+(`src/GameDetector.cpp`, `ConfigManager.cpp`) — the generic-exe theory
+above was right, and here's exactly why, with line references:
+
+- **Detection mechanism**: a `QTimer` polls the full Windows running-
+  process list every 5 seconds, checks each process's **executable
+  basename only** (not full path) against a `knownGameExes` set built by
+  the Steam/Epic/GOG/Ubisoft library scan (on startup + every 10 min).
+  First match wins; zero matches fires `noGameDetected()`.
+- **"Just Chatting" is a hardcoded fallback, not a wrong match** —
+  `ConfigManager.cpp` defaults the no-match command to `!setgame just
+  chatting`. Marvel Rivals showing "Just Chatting" means its running
+  process was **never in the known-exe set at all**, not that something
+  matched incorrectly.
+- **The real bug — confirmed only for Steam and Ubisoft**: the library
+  scan picks "the first non-ignored `.exe` in the game's root install
+  folder," with no check that it's actually the game binary. Many games
+  ship a root-level launcher stub that spawns the real game exe from a
+  subfolder under a different name — the scan stops at the stub, the
+  real running process is never recorded, permanent miss. **Epic and
+  GOG don't have this problem** — Epic reads `LaunchExecutable` straight
+  from its own manifest JSON, GOG reads `exe` straight from its registry
+  key, both declared values, no guessing.
+- **The same root cause also explains "wrong category," not just "no
+  category"**: two games whose root folders both yield a generic exe
+  name (`Launcher.exe`, etc.) collide in the same set — first-scanned
+  game "owns" that name, so launching the second game silently fires the
+  first game's category. This matches Harvey's screenshot exactly
+  (`Dreadmyst` → `Launcher.exe`, `RSDragonwilds` →
+  `EpicOnlineServicesInstaller.exe`).
+- Two smaller, lower-priority findings: a fixed 1024-process buffer that
+  silently truncates on a heavily-loaded PC, and exe-name matching that's
+  case-sensitive with no normalization.
+
+**Scoped fix plan, ready once Harvey's around to verify against real
+game launches** (in priority order): (1) for Steam/Ubisoft, don't stop
+at the first root-folder `.exe` — read each platform's own real launch-
+target metadata the way Epic/GOG already do, where it exists (Steam has
+`appmanifest_*.acf` + can often be cross-referenced against
+`launch.vdf`-style config; Ubisoft's manifests need the same treatment
+Epic/GOG already get); (2) stop silently dropping the second game on an
+exe-name collision — at minimum warn/flag it in the Category and Games
+List UI instead of one game invisibly winning; (3) normalize exe-name
+casing at both scan- and match-time; (4) raise or dynamically size the
+process-list buffer. All of this needs a real Windows machine with
+Steam/Epic/GOG/Ubisoft games installed to verify against — can't be
+confirmed as *fixed* from static reading alone, only diagnosed.
+
+## Ideas noted from Harvey's other reference screenshots (2026-08-10)
+
+Two more images landed in `_examples\` (`pngTuber example.png`,
+`streamvatar and frames.png`) alongside the Game Detector ones — not
+tied to a specific ask, just "take a look and jot down what could be
+taken from those images." Logged here as backlog candidates, not
+scoped or built:
+- **PNGTuber-style reactive avatar overlay** — a small animated 2D
+  character in the corner of the stream (the example shows a simple
+  chibi avatar). The standard technique swaps between an idle and a
+  talking sprite based on live mic input level. Flagged as
+  higher-complexity than it looks: OBS Browser Sources need explicit
+  mic permission (`getUserMedia`) granted via OBS's own audio-capture
+  settings for a source, which is new, unverified ground — similar in
+  kind to the live-connection risk category the Chat + TTS Overlay
+  already carries, not a quick add.
+- **Social links panel** — a small always-visible box listing social
+  handles (YouTube/TikTok/X/Instagram, etc.) with platform icons. Cheap
+  to build: this app already has platform icon SVGs
+  (`popup-slide-icons.js`) to reuse, and it's static content, no new
+  risk category. Good candidate for an actual Starter Kit addition or
+  new lightweight item type.
+- **Countdown timer overlay** — a "time until X" display (the example
+  shows a giveaway countdown). Genuinely simple and safe to build: pure
+  JS interval baked into `scene.html`, no network/live-verification risk
+  at all, similar shape to the existing popup-slide engine.
+- **Non-rectangular frame shapes** — the example's diamond-shaped webcam
+  frame suggests frame shape options beyond rounded-rectangle (diamond,
+  hexagon, circle). Moderate scope: CSS `clip-path` in the baked output,
+  a matching Fabric.js polygon in the editor canvas.
+
+## v1.4.0: Background Generator (2026-08-10)
+
+Harvey's ask, same night as the above: "a complete 'Gradient Background'
+editor or 'static image generator' type plugin would be great to have as
+well. Because even just basic background imagery is nice to have for a
+stream." Told to keep working solo overnight ("do another module and
+work it out") — built as the next module while `game-detector` and the
+FabioZumbi12 repo list waited on his input.
+
+**Shipped**: a new **Background Generator** — a standalone tool
+(topbar, works with no project open, same pattern as the Stinger
+Builder) that generates and exports a static background image: solid
+color, a linear or radial gradient, or a photo with a semi-transparent
+gradient overlaid on top (the "ghost effect" from the testing-pass
+backlog, reframed here as a static-image-export mode rather than a
+Starter Kit template — closer to what he actually asked for). Exports a
+plain PNG, meant to be used directly as an OBS Image Source. New pure
+module `background-generator.js` (fully tested: `coverFitRect()` for
+the photo-fit math, `hexToRgba()` for the overlay's alpha-carrying
+gradient stops, `resolveBackgroundPlan()` separating "what to draw" from
+the actual canvas draw calls) reuses `gradient.js`'s existing
+`gradientCoordsForAngle()` so this tool's gradients look identical to a
+Frame item's gradient fill elsewhere in the app.
+
+**Not built**: pattern/texture generation beyond solid/gradient/photo —
+kept to what "basic background imagery" actually asked for rather than
+guessing at a bigger scope.
 
 ## v0.8.0 – v0.9.0: two more standalone modules
 

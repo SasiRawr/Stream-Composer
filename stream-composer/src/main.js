@@ -29,6 +29,7 @@ import { STINGER_TEMPLATES, defaultStingerProps } from './stinger-templates.js';
 import { renderStingerFrame } from './stinger-render.js';
 import { checkAlphaSupport, exportStinger } from './stinger-export.js';
 import { CHAT_PLATFORMS, visibleChatPlatforms } from './chat-platforms.js';
+import { defaultBackgroundProps, drawBackground } from './background-generator.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -2081,6 +2082,141 @@ function wireStingerBuilderDialog() {
   document.getElementById('stingerExportBtn').addEventListener('click', exportStingerNow);
 }
 
+// ---- BACKGROUND GENERATOR DIALOG -------------------------------------------
+// A standalone tool, same "works with no project open" pattern as the
+// Stinger Builder — see background-generator.js for the actual fill logic.
+let bgProps = null;
+let bgImage = null; // HTMLImageElement, or null if none picked yet (only used in 'image-gradient' mode)
+
+function bgUpdateFieldVisibility() {
+  document.getElementById('bgSolidColorField').hidden = bgProps.fillType !== 'solid';
+  document.getElementById('bgImagePickField').hidden = bgProps.fillType !== 'image-gradient';
+  document.getElementById('bgGradientFields').hidden = bgProps.fillType === 'solid';
+  document.getElementById('bgOverlayOpacityField').hidden = bgProps.fillType !== 'image-gradient';
+  document.getElementById('bgGradientAngleField').hidden = bgProps.gradientStyle === 'radial';
+}
+
+function bgRedrawPreview() {
+  const canvas = document.getElementById('bgPreviewCanvas');
+  canvas.width = bgProps.canvasWidth;
+  canvas.height = bgProps.canvasHeight;
+  drawBackground(canvas.getContext('2d'), bgProps.canvasWidth, bgProps.canvasHeight, bgProps, bgImage);
+}
+
+function openBackgroundGeneratorDialog() {
+  bgProps = defaultBackgroundProps();
+  bgImage = null;
+
+  document.getElementById('bgResolution').value = `${bgProps.canvasWidth}x${bgProps.canvasHeight}`;
+  document.getElementById('bgFillType').value = bgProps.fillType;
+  document.getElementById('bgSolidColor').value = bgProps.solidColor;
+  document.getElementById('bgGradientFrom').value = bgProps.gradientFrom;
+  document.getElementById('bgGradientTo').value = bgProps.gradientTo;
+  document.getElementById('bgGradientStyle').value = bgProps.gradientStyle;
+  document.getElementById('bgGradientAngle').value = String(bgProps.gradientAngle);
+  document.getElementById('bgOverlayOpacity').value = String(Math.round(bgProps.overlayOpacity * 100));
+  document.getElementById('bgOverlayOpacityValue').textContent = String(Math.round(bgProps.overlayOpacity * 100));
+  document.getElementById('bgImageStatus').textContent = 'No image chosen yet.';
+  document.getElementById('bgExportStatus').textContent = '';
+
+  bgUpdateFieldVisibility();
+  bgRedrawPreview();
+  document.getElementById('backgroundGeneratorDialog').showModal();
+}
+
+async function exportBackgroundNow() {
+  const statusEl = document.getElementById('bgExportStatus');
+  const outputFolder = await invoke('pick_project_folder');
+  if (!outputFolder) return;
+
+  statusEl.textContent = 'Exporting…';
+  const exportBtn = document.getElementById('bgExportBtn');
+  exportBtn.disabled = true;
+
+  try {
+    const canvas = document.getElementById('bgPreviewCanvas');
+    const dataUrl = canvas.toDataURL('image/png');
+    const base64Data = dataUrl.substring(dataUrl.indexOf(',') + 1);
+    const filePath = joinPath(outputFolder, 'background.png');
+    await invoke('write_binary_file', { path: filePath, base64Data });
+    statusEl.textContent = `Saved to ${filePath} — add it to OBS as an Image Source.`;
+  } catch (err) {
+    statusEl.textContent = 'Export failed: ' + err;
+  } finally {
+    exportBtn.disabled = false;
+  }
+}
+
+function wireBackgroundGeneratorDialog() {
+  els.backgroundGeneratorBtn.addEventListener('click', openBackgroundGeneratorDialog);
+  document.getElementById('bgCloseBtn').addEventListener('click', () => document.getElementById('backgroundGeneratorDialog').close());
+
+  document.getElementById('bgResolution').addEventListener('change', (e) => {
+    const [width, height] = e.target.value.split('x').map((n) => parseInt(n, 10));
+    bgProps.canvasWidth = width;
+    bgProps.canvasHeight = height;
+    bgRedrawPreview();
+  });
+
+  document.getElementById('bgFillType').addEventListener('change', (e) => {
+    bgProps.fillType = e.target.value;
+    bgUpdateFieldVisibility();
+    bgRedrawPreview();
+  });
+
+  document.getElementById('bgSolidColor').addEventListener('input', (e) => {
+    bgProps.solidColor = e.target.value;
+    bgRedrawPreview();
+  });
+
+  ['bgGradientFrom', 'bgGradientTo'].forEach((id) => {
+    document.getElementById(id).addEventListener('input', (e) => {
+      bgProps[id === 'bgGradientFrom' ? 'gradientFrom' : 'gradientTo'] = e.target.value;
+      bgRedrawPreview();
+    });
+  });
+
+  document.getElementById('bgGradientStyle').addEventListener('change', (e) => {
+    bgProps.gradientStyle = e.target.value;
+    bgUpdateFieldVisibility();
+    bgRedrawPreview();
+  });
+
+  document.getElementById('bgGradientAngle').addEventListener('input', (e) => {
+    bgProps.gradientAngle = parseFloat(e.target.value) || 0;
+    bgRedrawPreview();
+  });
+
+  document.getElementById('bgOverlayOpacity').addEventListener('input', (e) => {
+    bgProps.overlayOpacity = parseInt(e.target.value, 10) / 100;
+    document.getElementById('bgOverlayOpacityValue').textContent = e.target.value;
+    bgRedrawPreview();
+  });
+
+  document.getElementById('bgPickImageBtn').addEventListener('click', async () => {
+    const path = await invoke('pick_image_file');
+    if (!path) return;
+    try {
+      const base64 = await invoke('read_binary_file_base64', { path });
+      const ext = (path.split('.').pop() || 'png').toLowerCase();
+      const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = `data:${mime};base64,${base64}`;
+      });
+      bgImage = img;
+      document.getElementById('bgImageStatus').textContent = 'Using: ' + path;
+      bgRedrawPreview();
+    } catch (err) {
+      setStatus('Couldn\'t load that image: ' + err, 'err');
+    }
+  });
+
+  document.getElementById('bgExportBtn').addEventListener('click', exportBackgroundNow);
+}
+
 // ---- BOOTSTRAP ----------------------------------------------------------------
 window.addEventListener('DOMContentLoaded', () => {
   els = {
@@ -2104,11 +2240,13 @@ window.addEventListener('DOMContentLoaded', () => {
     bakeNewFolderBtn: document.getElementById('bakeNewFolderBtn'),
     bakeResultActions: document.getElementById('bakeResultActions'),
     stingerBuilderBtn: document.getElementById('stingerBuilderBtn'),
+    backgroundGeneratorBtn: document.getElementById('backgroundGeneratorBtn'),
   };
 
   wireNewProjectDialog();
   wireStarterKitDialog();
   wireStingerBuilderDialog();
+  wireBackgroundGeneratorDialog();
   wireChromaKeyDialog();
   wireCropDialog();
   wirePadDialog();
