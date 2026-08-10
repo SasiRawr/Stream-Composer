@@ -4,6 +4,31 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.2.1 — 2026-08-10 (pre-release, pending verification)
+
+Fixes from Harvey's first real hands-on testing pass across v1.0.0–v1.2.0.
+Full detail in ROADMAP.md's "First real testing round" section.
+
+### Fixed
+- Image-edit tools (Chroma Key, Crop, Pad, Color Adjust, Outline, Blur,
+  Sharpen, Vignette) no longer drop processed output next to the source
+  file — writes to a hidden `.edited-images/` project folder instead.
+- "Copy OBS setup instructions" button now actually copies, via a proper
+  clipboard-manager-backed command instead of the unreliable raw Web API.
+- Stinger export no longer throws `config.quality must be provided` —
+  both export modes work again.
+- Stinger Builder logo is now actually resizable — new "Logo size" slider
+  (5–100% of frame height), decoupled from the export Resolution dropdown.
+
+### Added
+- Reset buttons on every image-edit dialog (previously only Color Adjust
+  had one); Chroma Key and Outline also now reset their sliders on open
+  instead of keeping stale values from the last edit.
+- Windows `.exe` (NSIS) installer now shows a one-time notice when
+  upgrading over an existing install. **Only covers `.exe`** — the `.msi`
+  (WiX) installer's upgrade behavior is native Windows Installer and
+  untouched by this fix.
+
 ## v1.2.0 — 2026-08-06 (pre-release, pending verification)
 
 ### Changed
