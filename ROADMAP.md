@@ -149,11 +149,16 @@ signs of a shaky one.
   (right-click → Properties → "Refresh cache of current page") — Harvey
   had to discover this by trial and error.
 
-None of the above has been re-verified by a real install/click-through
-yet — same standing rule as everything else in this project: automated
-tests + a clean build only prove it compiles and the pure logic is
-correct, not that the installer dialog reads right or the stinger logo
-actually looks good at 35% by default. Needs Harvey's next testing pass.
+Shipped as **v1.2.1** (2026-08-10): version bumped, cold `tauri build`
+clean, launch-then-kill smoke test passed, pushed and tagged, published
+as a GitHub pre-release, staged at `Builds\Testing\
+Stream-Composer-v1.2.1-fixes\`. None of the above has been re-verified
+by a real install/click-through yet, though — same standing rule as
+everything else in this project: automated tests + a clean build only
+prove it compiles and the pure logic is correct, not that the installer
+dialog reads right or the stinger logo actually looks good at 35% by
+default. Needs Harvey's next testing pass before promotion to a real
+release.
 
 **Suggestions raised, not yet built — backlog for future versions:**
 - **Global eyedropper** — a color-pick tool that can sample any pixel on
@@ -194,6 +199,39 @@ actually looks good at 35% by default. Needs Harvey's next testing pass.
   v1.2.0 plan (needs a Node-only signing-service library that doesn't
   fit this app's no-backend runtime); re-flagged here since testing
   surfaced the same ask independently.
+
+## Outside sources scouted for ideas (2026-08-10) — not scoped, not built
+
+Harvey asked for a look at two outside sources of feature ideas, separate
+from the testing-pass backlog above. First-pass triage only — nothing
+below is scoped or built, and this needs a real conversation with Harvey
+before any of it becomes a version plan.
+
+- **FabioZumbi12's abandoned GitHub repos** — Harvey forked repos from a
+  GitHub user (`FabioZumbi12`) who stopped maintaining several OBS-
+  adjacent tools, intending to either fold them into Stream Composer or
+  take them over as separate projects. Only 2 forks actually exist under
+  `SasiRawr` right now, not the ~10 Harvey estimated — worth confirming
+  with him which repos he actually meant. Of the 2: `game-detector` (a
+  native C++ OBS Studio plugin, GPL-2.0, genuinely abandoned — last
+  commit ~5.5 months ago, unanswered issues since April) is a legitimate
+  take-over candidate, but as its **own separate project**, not a Stream
+  Composer feature — it's a native OBS plugin with a completely
+  different toolchain (C++/OBS plugin SDK) than this Tauri app.
+  `TwitchChatOverlay` has **no LICENSE file** (so Harvey's "open
+  licenses" assumption doesn't hold for this one specifically) and would
+  just duplicate the Chat + TTS Overlay this app already ships — not
+  worth pursuing.
+- **ReStream's public idea boards** (new-feature-requests / studio /
+  integration-requests / api-requests, filtered for spam/junk) — almost
+  entirely specific to ReStream's own hosted multistreaming platform,
+  cloud production Studio tool, and developer API, none of which
+  transfers to a local desktop app with no backend. One real signal:
+  **TikTok chat support is the single most-voted item across all four
+  boards** (230 votes, 2x the next-highest anywhere) — doesn't change
+  the technical blockers already logged above (paid signing-service key,
+  Node-only library), but is a real demand signal worth revisiting as a
+  business decision with Harvey, not just a technical one.
 
 ## v0.8.0 – v0.9.0: two more standalone modules
 
