@@ -367,18 +367,25 @@ above was right, and here's exactly why, with line references:
   case-sensitive with no normalization.
 
 **Scoped fix plan, ready once Harvey's around to verify against real
-game launches** (in priority order): (1) for Steam/Ubisoft, don't stop
-at the first root-folder `.exe` — read each platform's own real launch-
-target metadata the way Epic/GOG already do, where it exists (Steam has
-`appmanifest_*.acf` + can often be cross-referenced against
-`launch.vdf`-style config; Ubisoft's manifests need the same treatment
-Epic/GOG already get); (2) stop silently dropping the second game on an
-exe-name collision — at minimum warn/flag it in the Category and Games
-List UI instead of one game invisibly winning; (3) normalize exe-name
-casing at both scan- and match-time; (4) raise or dynamically size the
-process-list buffer. All of this needs a real Windows machine with
-Steam/Epic/GOG/Ubisoft games installed to verify against — can't be
-confirmed as *fixed* from static reading alone, only diagnosed.
+game launches** (in priority order — **updated** after the elevation
+investigation below turned up a real item #0): (0) switch the per-
+process exe-path lookup from `OpenProcess(...VM_READ) +
+GetModuleFileNameExW` to `QueryFullProcessImageNameW` with
+`PROCESS_QUERY_LIMITED_INFORMATION` — removes a real anti-cheat-
+triggered silent-skip failure mode (see below, this is likely what
+actually happened with Marvel Rivals specifically); (1) for
+Steam/Ubisoft, don't stop at the first root-folder `.exe` — read each
+platform's own real launch-target metadata the way Epic/GOG already do,
+where it exists (Steam has `appmanifest_*.acf` + can often be cross-
+referenced against `launch.vdf`-style config; Ubisoft's manifests need
+the same treatment Epic/GOG already get); (2) stop silently dropping
+the second game on an exe-name collision — at minimum warn/flag it in
+the Category and Games List UI instead of one game invisibly winning;
+(3) normalize exe-name casing at both scan- and match-time; (4) raise
+or dynamically size the process-list buffer. All of this needs a real
+Windows machine with Steam/Epic/GOG/Ubisoft games installed to verify
+against — can't be confirmed as *fixed* from static reading alone, only
+diagnosed.
 
 ### New feature, requested same night: tie a scene + source list to a game category
 
@@ -397,20 +404,63 @@ a decision on what happens when a detected game has no scene mapped
 (fall back to current scene? A configurable default?). Real scoping
 work for once there's an actual build environment to test against.
 
-### Admin-elevation hypothesis, raised same night by Harvey
+### Admin-elevation hypothesis, raised same night by Harvey — investigated, real finding
 
-Harvey's own diagnosis, worth taking seriously: "I believe the issue
-comes from running OBS Studio as administrator and it might not be
-detecting games that are running... However, I HAVE to run OBS Studio
-as admin, because if I don't, my hotkeys for scene changes/transitions/
-foreground-game-capture don't work unless I'm running OBS as admin."
-Investigating this now (parallel research pass, same read-only clone) —
-whether elevation genuinely breaks this plugin's own process-scanning
-(separate question from the already-confirmed exe-heuristic bug above),
-whether his hotkey problem is an OBS-core UIPI issue unrelated to this
-plugin, and whether there's a real workaround for "needs admin for
-hotkeys" that doesn't require full elevation. Update this section once
-that comes back.
+Harvey's own diagnosis: "I believe the issue comes from running OBS
+Studio as administrator and it might not be detecting games that are
+running... However, I HAVE to run OBS Studio as admin, because if I
+don't, my hotkeys for scene changes/transitions/foreground-game-capture
+don't work unless I'm running OBS as admin." Investigated with a fresh
+read of the same cloned source. Two separate findings:
+
+**A second, genuinely new root cause for detection misses — likely THE
+explanation for Marvel Rivals specifically.** `GameDetector.cpp:733`
+calls `OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE,
+pid)` on every running process to read its exe path. If that call
+returns NULL, the process is silently skipped (line 734, no log at
+all). `PROCESS_VM_READ` is exactly the access right anti-cheat systems
+(Easy Anti-Cheat, BattlEye, Vanguard) commonly deny to any external
+caller, elevated or not, specifically because it's how memory-scanning
+cheat tools work — and **Marvel Rivals ships with Easy Anti-Cheat.**
+This isn't confirmed without a live test, but it's a strong, specific,
+independently-plausible explanation for the exact game in Harvey's
+screenshot, on top of the already-confirmed wrong-exe-recorded bug.
+**Fix, and it's a small one**: switch to `QueryFullProcessImageNameW`
+with `PROCESS_QUERY_LIMITED_INFORMATION` instead — the modern API for
+exactly "what's this PID's exe path," needs no `VM_READ`, far less
+likely to be blocked by anti-cheat regardless of elevation. Adding this
+as **fix-plan item #0**, ahead of the exe-scan-heuristic fix — smaller,
+more mechanical, and directly explains the specific case Harvey hit.
+
+The library-scan code (Steam/Epic/GOG/Ubisoft) reads
+`HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\...`, a machine-wide hive
+readable by standard users and not subject to UAC virtualization (which
+only redirects writes from legacy unmanifested apps) — **ruled out** as
+an elevation-sensitive path.
+
+**Harvey's hotkey problem is unrelated to this plugin.** Grepped the
+entire source tree for `RegisterHotKey`, `SetWindowsHookEx`,
+`GetForegroundWindow`, `FindWindow`, `SetForegroundWindow`,
+`IsUserAnAdmin`, `TOKEN_ELEVATION` — zero matches. `game-detector` is
+pure `EnumProcesses` polling; it never touches hotkeys or window focus.
+His hotkey/foreground-capture issue lives entirely in OBS core (or its
+Game Capture hook) — the two problems are correlated by both happening
+to need "OBS running as admin," not by sharing any code.
+
+**The hotkey issue itself is real, OS-enforced Windows behavior (UIPI),
+not something even a custom plugin could bypass**: a lower-integrity-
+level process cannot hook into or send synthetic input to a higher-
+integrity-level window. If a game (or its anti-cheat) runs elevated,
+OBS must match that elevation to hook/capture it or receive its
+hotkeys — full stop, enforced by the OS. Two realistic paths, **neither
+verified live yet**: (1) check whether the game actually needs to run
+elevated at all (Task Manager's Details tab has an "Elevated" column;
+or Properties → Compatibility → "Run as administrator") — if it
+doesn't, turning that off removes the need for OBS to elevate too;
+(2) if it genuinely does need elevation, keep OBS elevated but remove
+the repeated UAC-prompt friction with a Windows Task Scheduler entry
+set to "Run with highest privileges," launched from a normal shortcut —
+same admin rights, no prompt every time.
 
 ### Build toolchain status, checked same night
 
