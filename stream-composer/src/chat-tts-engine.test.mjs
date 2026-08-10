@@ -23,7 +23,9 @@ const baseProps = {
   ttsEnabled: true,
   ttsRate: 1.2,
   ttsVolume: 0.8,
+  ttsVoiceName: 'Microsoft Zira Desktop',
   filterCommands: true,
+  filterEmoteOnly: true,
   maxVisibleMessages: 3,
   messageDisplayMs: 6000,
 };
@@ -48,6 +50,22 @@ assert(script.includes('parseKickChatEvent'), 'the Kick message parser is inline
 assert(script.includes('KICK_PUSHER_APP_KEY'), 'the Kick Pusher app key placeholder is present and named clearly');
 assert(script.includes('speechSynthesis'), 'uses the browser-native speechSynthesis API');
 assert(script.includes('onvoiceschanged'), 'handles the getVoices()-empty-until-voiceschanged timing issue');
+assert(script.includes('TTS_VOICE_NAME = "Microsoft Zira Desktop"'), 'the configured TTS voice name is baked into the output');
+assert(script.includes('FILTER_EMOTE_ONLY = true'), 'the filter-emote-only setting is baked into the output');
+assert(script.includes('isEmoteOnlyMessage'), 'the emote-only detector is inlined');
+
+// ---- generated script must actually be valid JS (parse-only, never executed —
+// executing it would try to open real WebSockets) ----
+let syntaxError = null;
+try { new Function(script); } catch (err) { syntaxError = err; }
+assert(syntaxError === null, `generated script is syntactically valid JS (got: ${syntaxError && syntaxError.message})`);
+
+// ---- ttsVoiceName defaulting: empty/missing means "system default", not a broken reference ----
+const noVoiceScript = buildChatOverlayScript('chat-item5-4', { ...baseProps, ttsVoiceName: '' });
+assert(noVoiceScript.includes('TTS_VOICE_NAME = ""'), 'an unset voice name bakes to an empty string, not undefined/null');
+let noVoiceSyntaxError = null;
+try { new Function(noVoiceScript); } catch (err) { noVoiceSyntaxError = err; }
+assert(noVoiceSyntaxError === null, `script with no configured voice is still syntactically valid JS (got: ${noVoiceSyntaxError && noVoiceSyntaxError.message})`);
 
 // ---- Kick enabled, Twitch disabled ----
 const kickOnlyScript = buildChatOverlayScript('chat-item2-1', {

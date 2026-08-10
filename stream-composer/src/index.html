@@ -108,20 +108,43 @@
 </dialog>
 
 <!--
-  Starter Kit dialog: pick a ready-made template instead of starting from
-  a blank canvas. Always creates a brand-new project in a folder you pick
-  - never overwrites anything already open. Uses each template's own
-  canvas size (no resolution override here, to avoid rescaling item
-  positions incorrectly).
+  Bake scene-name dialog: asked only when a bake picks a NEW output folder
+  (first bake, or "Bake to new folder…") — repeat bakes into the same
+  folder reuse the last name automatically, matching how folder reuse
+  already works. Sets the output filename (e.g. "intro" -> intro.html).
+-->
+<dialog id="bakeSceneNameDialog">
+  <h2>Name this scene</h2>
+  <div class="hint">Used as the output filename (e.g. "intro" bakes to intro.html). You'll be asked again next time you bake to a new folder.</div>
+  <div class="field">
+    <label for="bakeSceneNameInput">Scene name</label>
+    <input type="text" id="bakeSceneNameInput" value="scene">
+  </div>
+  <div class="actions">
+    <button class="primary" id="bakeSceneNameConfirmBtn" type="button">Bake</button>
+    <button class="secondary" id="bakeSceneNameCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
+<!--
+  Starter Kit dialog: pick one or more ready-made templates instead of
+  starting from a blank canvas. Always creates a brand-new project in a
+  folder you pick - never overwrites anything already open. Picking more
+  than one merges them into a single project (mergeStarterProjects() in
+  starter-kit/manifest.js) at the largest of the selected templates' own
+  canvas sizes - no resolution override here, to avoid rescaling item
+  positions incorrectly.
 -->
 <dialog id="starterKitDialog" class="wide-dialog">
   <h2>Starter Kit</h2>
-  <div class="hint">Pick a starting point — everything is editable after it's created. This always creates a brand-new project in a folder you pick; it never overwrites anything already open.</div>
+  <div class="hint">Pick one or more starting points — everything is editable after it's created, and picking more than one combines them into a single project. This always creates a brand-new project in a folder you pick; it never overwrites anything already open.</div>
   <div class="field">
-    <label for="starterTemplate">Template</label>
-    <select id="starterTemplate"></select>
+    <div class="button-row">
+      <button class="secondary" id="starterSelectAllBtn" type="button">Select all</button>
+      <button class="secondary" id="starterSelectNoneBtn" type="button">Select none</button>
+    </div>
+    <div id="starterTemplateList"></div>
   </div>
-  <div class="hint" id="starterTemplateDescription"></div>
   <div class="actions">
     <button class="primary" id="createStarterProjectBtn" type="button">Create</button>
     <button class="secondary" id="cancelStarterKitBtn" type="button">Cancel</button>

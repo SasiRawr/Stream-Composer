@@ -24,7 +24,7 @@ import { applyVignette } from './vignette.js';
 import { PLATFORM_ICONS, platformIconSvg } from './popup-slide-icons.js';
 import { parseSlidesText, slidesToPlaintext, evalConfig, legacyConfigToPopupSlideProps } from './popup-slide-import.js';
 import { gradientCoordsForAngle } from './gradient.js';
-import { STARTER_TEMPLATES } from './starter-kit/manifest.js';
+import { STARTER_TEMPLATES, mergeStarterProjects } from './starter-kit/manifest.js';
 import { STINGER_TEMPLATES, defaultStingerProps } from './stinger-templates.js';
 import { renderStingerFrame } from './stinger-render.js';
 import { checkAlphaSupport, exportStinger } from './stinger-export.js';
@@ -99,7 +99,9 @@ function defaultPropsFor(type) {
       ttsEnabled: true,
       ttsRate: 1,
       ttsVolume: 1,
+      ttsVoiceName: '', // '' = browser/OS default voice
       filterCommands: true,
+      filterEmoteOnly: true, // Twitch only for now — Kick's chat feed doesn't expose emote-position metadata
       maxVisibleMessages: 3,
       messageDisplayMs: 6000,
       showAdultPlatforms: false,
@@ -136,16 +138,19 @@ async function createProject(canvasWidth, canvasHeight) {
 
 // ---- STARTER KIT --------------------------------------------------------
 // Always creates a brand-new project (never overwrites an already-open
-// one) in a folder the user picks, using the template's own canvas size —
-// see starter-kit/manifest.js for what each template actually contains.
-async function createProjectFromTemplate(template) {
+// one) in a folder the user picks. Picking more than one template merges
+// them via mergeStarterProjects() — see starter-kit/manifest.js for what
+// each template contains and how the merge picks a canvas size.
+async function createProjectFromTemplates(templates) {
+  if (templates.length === 0) return;
   const folder = await invoke('pick_project_folder');
   if (!folder) return;
-  project = template.buildProject();
+  project = mergeStarterProjects(templates.map((t) => t.buildProject()));
   projectFolder = folder;
   await openWorkspace();
   await saveProject();
-  setStatus(`Starter project "${template.label}" created in ${folder}. Try it out, then click "Bake Browser Source…" above when you're ready to export and use it!`, 'ok');
+  const names = templates.map((t) => t.label).join(' + ');
+  setStatus(`Starter project "${names}" created in ${folder}. Try it out, then click "Bake Browser Source…" above when you're ready to export and use it!`, 'ok');
 }
 
 async function openProject() {
@@ -1561,7 +1566,14 @@ function renderChatOverlayProperties(item, body) {
       <div class="field"><label>Volume</label><input type="range" id="pf-ttsVolume" min="0" max="1" step="0.05" value="${p.ttsVolume}"></div>
     </div>
     <div class="field">
+      <label>Voice</label>
+      <select id="pf-ttsVoice"></select>
+    </div>
+    <div class="field">
       <label><input type="checkbox" id="pf-filterCommands" ${p.filterCommands ? 'checked' : ''}> Skip messages starting with "!"</label>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="pf-filterEmoteOnly" ${p.filterEmoteOnly ? 'checked' : ''}> Skip emote-only messages (Twitch only for now — Kick's feed doesn't expose emote position data)</label>
     </div>
     <div class="field-row">
       <div class="field"><label>Max visible messages</label><input type="number" id="pf-maxVisibleMessages" min="1" max="10" value="${p.maxVisibleMessages}"></div>
@@ -1578,16 +1590,33 @@ function renderChatOverlayProperties(item, body) {
     wirePlatformInputs();
   });
 
+  // The editor window is Chromium (WebView2), same as the baked overlay, so
+  // it has its own real speechSynthesis.getVoices() list to populate this
+  // from — no need to guess or hardcode voice names. getVoices() can return
+  // empty until the 'voiceschanged' event fires once, so re-populate on it.
+  const voiceSelect = document.getElementById('pf-ttsVoice');
+  function populateVoiceOptions() {
+    const voices = (window.speechSynthesis && window.speechSynthesis.getVoices()) || [];
+    const options = ['<option value="">System default</option>']
+      .concat(voices.map((v) => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)} (${escapeHtml(v.lang)})</option>`));
+    voiceSelect.innerHTML = options.join('');
+    voiceSelect.value = voices.some((v) => v.name === p.ttsVoiceName) ? p.ttsVoiceName : '';
+  }
+  populateVoiceOptions();
+  if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = populateVoiceOptions;
+
   const applyGeneral = () => {
     p.ttsEnabled = document.getElementById('pf-ttsEnabled').checked;
     p.ttsRate = parseFloat(document.getElementById('pf-ttsRate').value) || 1;
     p.ttsVolume = parseFloat(document.getElementById('pf-ttsVolume').value);
     if (Number.isNaN(p.ttsVolume)) p.ttsVolume = 1;
+    p.ttsVoiceName = voiceSelect.value;
     p.filterCommands = document.getElementById('pf-filterCommands').checked;
+    p.filterEmoteOnly = document.getElementById('pf-filterEmoteOnly').checked;
     p.maxVisibleMessages = parseInt(document.getElementById('pf-maxVisibleMessages').value, 10) || 3;
     p.messageDisplayMs = Math.round((parseFloat(document.getElementById('pf-messageDisplaySeconds').value) || 6) * 1000);
   };
-  ['pf-ttsEnabled', 'pf-ttsRate', 'pf-ttsVolume', 'pf-filterCommands', 'pf-maxVisibleMessages', 'pf-messageDisplaySeconds']
+  ['pf-ttsEnabled', 'pf-ttsRate', 'pf-ttsVolume', 'pf-ttsVoice', 'pf-filterCommands', 'pf-filterEmoteOnly', 'pf-maxVisibleMessages', 'pf-messageDisplaySeconds']
     .forEach((id) => document.getElementById(id).addEventListener('change', applyGeneral));
 }
 
@@ -1622,13 +1651,65 @@ function updateBakeButtonLabels() {
   els.bakeNewFolderBtn.hidden = !hasLastFolder;
 }
 
+// Strips characters Windows/macOS/Linux all disallow in filenames, so
+// whatever the user types is always a safe "<name>.html" — falls back to
+// "scene" if that leaves nothing usable.
+function sanitizeSceneName(name) {
+  const cleaned = (name || '').trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '').slice(0, 80);
+  return cleaned || 'scene';
+}
+
+// Only shown when a bake is about to pick a NEW output folder (first bake,
+// or "Bake to new folder…") — resolves to null if the user cancels, which
+// aborts the bake entirely rather than baking with a stale/empty name.
+function promptSceneName(defaultName) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('bakeSceneNameDialog');
+    const input = document.getElementById('bakeSceneNameInput');
+    const confirmBtn = document.getElementById('bakeSceneNameConfirmBtn');
+    const cancelBtn = document.getElementById('bakeSceneNameCancelBtn');
+    input.value = defaultName;
+
+    function cleanup() {
+      confirmBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+      dialog.removeEventListener('cancel', onCancel);
+    }
+    function onConfirm() {
+      cleanup();
+      dialog.close();
+      resolve(input.value);
+    }
+    function onCancel() {
+      cleanup();
+      dialog.close();
+      resolve(null);
+    }
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+    dialog.addEventListener('cancel', onCancel); // Esc key closes <dialog>, fires 'cancel'
+
+    dialog.showModal();
+    input.focus();
+    input.select();
+  });
+}
+
 async function bakeProject(forceNewFolder) {
   if (!project || !projectFolder) return;
 
   let outputFolder = !forceNewFolder && project.lastBakeFolder ? project.lastBakeFolder : null;
+  const isNewFolderPick = !outputFolder;
   if (!outputFolder) {
     outputFolder = await invoke('pick_project_folder');
     if (!outputFolder) return;
+  }
+
+  let sceneName = project.sceneName || 'scene';
+  if (isNewFolderPick) {
+    const typed = await promptSceneName(sceneName);
+    if (typed === null) return; // user cancelled naming — abort the bake, don't write anything
+    sceneName = sanitizeSceneName(typed);
   }
 
   let html;
@@ -1639,10 +1720,11 @@ async function bakeProject(forceNewFolder) {
     return;
   }
 
-  const scenePath = joinPath(outputFolder, 'scene.html');
+  const scenePath = joinPath(outputFolder, sceneName + '.html');
   await invoke('write_text_file', { path: scenePath, contents: html });
 
   project.lastBakeFolder = outputFolder;
+  project.sceneName = sceneName;
   await saveProject();
   updateBakeButtonLabels();
 
@@ -1744,29 +1826,44 @@ function wireNewProjectDialog() {
 // ---- STARTER KIT DIALOG -----------------------------------------------------
 function wireStarterKitDialog() {
   const dialog = document.getElementById('starterKitDialog');
-  const templateSelect = document.getElementById('starterTemplate');
-  const descriptionEl = document.getElementById('starterTemplateDescription');
+  const listEl = document.getElementById('starterTemplateList');
+  const createBtn = document.getElementById('createStarterProjectBtn');
 
-  templateSelect.innerHTML = STARTER_TEMPLATES.map((t) => `<option value="${t.key}">${t.label}</option>`).join('');
+  listEl.innerHTML = STARTER_TEMPLATES.map((t) => `
+    <label class="starter-template-option">
+      <input type="checkbox" class="starterTemplateCheck" value="${t.key}">
+      <span><strong>${t.label}</strong><div class="hint">${t.description}</div></span>
+    </label>
+  `).join('');
+  const checkboxes = () => Array.from(listEl.querySelectorAll('.starterTemplateCheck'));
 
-  function updateDescription() {
-    const t = STARTER_TEMPLATES.find((t) => t.key === templateSelect.value);
-    descriptionEl.textContent = t ? t.description : '';
+  function updateCreateEnabled() {
+    createBtn.disabled = !checkboxes().some((c) => c.checked);
   }
-  updateDescription();
-  templateSelect.addEventListener('change', updateDescription);
+  checkboxes().forEach((c) => c.addEventListener('change', updateCreateEnabled));
+
+  document.getElementById('starterSelectAllBtn').addEventListener('click', () => {
+    checkboxes().forEach((c) => (c.checked = true));
+    updateCreateEnabled();
+  });
+  document.getElementById('starterSelectNoneBtn').addEventListener('click', () => {
+    checkboxes().forEach((c) => (c.checked = false));
+    updateCreateEnabled();
+  });
 
   els.starterKitBtn.addEventListener('click', () => {
-    updateDescription();
+    checkboxes().forEach((c, i) => (c.checked = i === 0)); // default: first template only, like the old single-select
+    updateCreateEnabled();
     dialog.showModal();
   });
   document.getElementById('cancelStarterKitBtn').addEventListener('click', () => dialog.close());
 
-  document.getElementById('createStarterProjectBtn').addEventListener('click', async () => {
-    const t = STARTER_TEMPLATES.find((t) => t.key === templateSelect.value);
-    if (!t) return;
+  createBtn.addEventListener('click', async () => {
+    const pickedKeys = new Set(checkboxes().filter((c) => c.checked).map((c) => c.value));
+    const templates = STARTER_TEMPLATES.filter((t) => pickedKeys.has(t.key));
+    if (templates.length === 0) return;
     dialog.close();
-    await createProjectFromTemplate(t);
+    await createProjectFromTemplates(templates);
   });
 }
 

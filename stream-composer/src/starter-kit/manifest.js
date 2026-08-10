@@ -51,8 +51,8 @@ export const STARTER_TEMPLATES = [
   },
   {
     key: 'frame-border',
-    label: 'Gradient Border',
-    description: 'A full-canvas decorative border with a violet-to-void gradient fill — a real usable background frame, not a placeholder.',
+    label: 'Gradient Background',
+    description: 'A full-canvas decorative frame with a violet-to-void gradient fill — a real usable background, not a placeholder.',
     buildProject: () => ({
       canvasWidth: 1920,
       canvasHeight: 1080,
@@ -107,3 +107,24 @@ export const STARTER_TEMPLATES = [
     }),
   },
 ];
+
+// Combines the buildProject() output of one or more picked templates into a
+// single project, for the Starter Kit dialog's "pick and choose" mode
+// (previously it was one-template-only). Canvas size is the largest of the
+// selected templates' own sizes — never a rescale, since item x/y are
+// absolute pixel positions and a template's items are already laid out
+// correctly for its own canvas. zIndex is renumbered sequentially across the
+// merge so combining templates never produces tied stacking order.
+export function mergeStarterProjects(projects) {
+  if (projects.length === 0) return null;
+  const canvasWidth = Math.max(...projects.map((p) => p.canvasWidth));
+  const canvasHeight = Math.max(...projects.map((p) => p.canvasHeight));
+  const items = [];
+  let z = 1;
+  for (const p of projects) {
+    for (const item of p.items) {
+      items.push({ ...item, zIndex: z++ });
+    }
+  }
+  return { canvasWidth, canvasHeight, items };
+}

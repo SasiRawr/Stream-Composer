@@ -160,45 +160,62 @@ dialog reads right or the stinger logo actually looks good at 35% by
 default. Needs Harvey's next testing pass before promotion to a real
 release.
 
+**Suggestions raised — built in v1.3.0 (2026-08-10):**
+- **Name scenes when baking** — the Bake dialog now asks for a scene
+  name the first time it picks a new output folder (or on "Bake to new
+  folder…"), and writes `<name>.html` instead of a hardcoded
+  `scene.html`. Repeat bakes into the same folder reuse the last name
+  automatically, matching how folder reuse already worked — no extra
+  dialog on the fast path.
+- **Starter Kit**: renamed "Gradient Border" → "Gradient Background",
+  and the dialog is now a checklist instead of a single-pick dropdown —
+  select one, several, or all, and they merge into a single project
+  (`mergeStarterProjects()` in `starter-kit/manifest.js`, using the
+  largest of the selected templates' own canvas sizes).
+- **Chat + TTS Overlay**: voice selection — a dropdown populated from
+  the editor's own real `speechSynthesis.getVoices()` list (the editor
+  window is Chromium/WebView2 too, so no guessing at voice names was
+  needed). Emote-only message filtering for **Twitch only** — parses
+  the `emotes` IRC tag to detect when a message is entirely emotes and
+  skips it from both TTS and the feed, the same way "skip messages
+  starting with !" already works. Kick has no known equivalent metadata
+  to build this against yet, so it stays Twitch-only for now.
+
 **Suggestions raised, not yet built — backlog for future versions:**
 - **Global eyedropper** — a color-pick tool that can sample any pixel on
   the screen, not just within a dialog's own preview canvas (raised
   against Chroma Key specifically, but generally useful). Needs research
   into what's available cross-platform inside a Tauri/WebView2 window —
   not a trivial add, likely its own small scoping pass.
-- **Name scenes when baking** — currently baked output folders are
-  unnamed/generic; let the user give a scene a name at bake time.
-- **Starter Kit**: rename "Gradient Border" → "Gradient Background" (the
-  existing option reads as border-only but is more general than that),
-  and add a "ghost effect" mode — overlay a semi-transparent gradient on
-  top of a real image, not just a flat gradient fill. Also: make starter
-  kit items individually selectable (build all, or pick and choose)
-  rather than all-or-nothing.
+- **Starter Kit "ghost effect"** — overlay a semi-transparent gradient on
+  top of a real image (not just a flat gradient fill), for people who
+  want a photo-backed background instead of a pure gradient. Needs
+  actual design judgment on how the blend should look, so held back from
+  the v1.3.0 batch rather than guessing at it.
 - **Stinger Builder, full editor controls** — beyond the logo-size slider
-  just added: rotation, movement/position, and general placement controls
-  inside the editor (not just centered/animated per-template), so a user
-  can actually art-direct the result instead of picking from fixed
-  templates. Also raised: importing a video file as the stinger's source
-  instead of a static image — either one with a pre-existing green-key
-  area, or with an eyedropper-style "mask this color" tool applied to
-  video frames. Also: pause/play and mute controls on the stinger preview
-  player (raised specifically so a repeating 3–5 second audio loop
-  doesn't become "maddening" during editing).
-- **Chat + TTS Overlay**: filter/exempt emote-only messages from being
-  read aloud, the same way "skip messages starting with !" already works
-  — needs a definition of "emote-only" per platform (Twitch has emote
-  metadata in IRC tags; Kick's equivalent needs checking). Voice
-  selection (a dropdown over `speechSynthesis.getVoices()`, rather than
-  always using the browser/OS default voice). A much bigger ask, **needs
-  Harvey directly, not something to build blind**: downloadable/curated
-  TTS voice models beyond what Windows ships (he's specifically heard
-  character-style voices — a C-3PO-style voice, an "airy kid" voice, a
-  raspy-voiced man — on sites like Tikfinity, and has logins that could
-  help identify and source the actual voice models). TikTok as a chat
-  platform — already a known, explicitly-deferred gap from the original
-  v1.2.0 plan (needs a Node-only signing-service library that doesn't
-  fit this app's no-backend runtime); re-flagged here since testing
-  surfaced the same ask independently.
+  already shipped in v1.2.1: rotation, movement/position, and general
+  placement controls inside the editor (not just centered/animated
+  per-template), so a user can actually art-direct the result instead of
+  picking from fixed templates. Also raised: importing a video file as
+  the stinger's source instead of a static image — either one with a
+  pre-existing green-key area, or with an eyedropper-style "mask this
+  color" tool applied to video frames. Also: pause/play and mute
+  controls on the stinger preview player (raised specifically so a
+  repeating 3–5 second audio loop doesn't become "maddening" during
+  editing).
+- **Chat + TTS Overlay downloadable voice models** — a much bigger ask,
+  **needs Harvey directly, not something to build blind**:
+  downloadable/curated TTS voice models beyond what Windows ships (he's
+  specifically heard character-style voices — a C-3PO-style voice, an
+  "airy kid" voice, a raspy-voiced man — on sites like Tikfinity, and has
+  logins that could help identify and source the actual voice models).
+- **TikTok as a chat platform** — already a known, explicitly-deferred
+  gap from the original v1.2.0 plan (needs a Node-only signing-service
+  library that doesn't fit this app's no-backend runtime); re-flagged
+  again by testing, and again by the 2026-08-10 ReStream idea-board scan
+  below (single most-voted item across all four boards) — the technical
+  blocker hasn't moved, but the repeated demand signal is worth a real
+  conversation with Harvey rather than staying silently deferred forever.
 
 ## Outside sources scouted for ideas (2026-08-10) — not scoped, not built
 

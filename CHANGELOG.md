@@ -4,6 +4,31 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.3.0 — 2026-08-10 (pre-release, pending verification)
+
+More requests from the v1.0-v1.2 testing pass — the ones that didn't
+need Harvey's direct judgment call first. Full detail in ROADMAP.md.
+
+### Added
+- **Name scenes when baking** — the Bake dialog asks for a scene name
+  the first time it picks a new output folder (or on "Bake to new
+  folder…"), and writes `<name>.html` instead of a fixed `scene.html`.
+  Repeat bakes into the same folder reuse the last name automatically.
+- **Starter Kit is now multi-select** — pick one, several, or all
+  templates and they merge into a single project, instead of picking
+  exactly one.
+- **Chat + TTS Overlay: voice selection** — a dropdown of your system's
+  actual installed TTS voices, instead of always using the browser/OS
+  default.
+- **Chat + TTS Overlay: skip emote-only messages (Twitch)** — messages
+  that are entirely emotes are now skipped from both TTS and the feed,
+  the same way "!command" messages already are. Kick doesn't expose the
+  metadata needed for this yet, so it's Twitch-only for now.
+
+### Changed
+- Starter Kit's "Gradient Border" template renamed to "Gradient
+  Background" — same template, clearer name for what it actually is.
+
 ## v1.2.1 — 2026-08-10 (pre-release, pending verification)
 
 Fixes from Harvey's first real hands-on testing pass across v1.0.0–v1.2.0.

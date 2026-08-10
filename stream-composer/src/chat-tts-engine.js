@@ -47,7 +47,9 @@ export function buildChatOverlayScript(instanceId, props) {
   const TTS_ENABLED = ${JSON.stringify(!!props.ttsEnabled)};
   const TTS_RATE = ${JSON.stringify(props.ttsRate ?? 1)};
   const TTS_VOLUME = ${JSON.stringify(props.ttsVolume ?? 1)};
+  const TTS_VOICE_NAME = ${JSON.stringify(props.ttsVoiceName || '')};
   const FILTER_COMMANDS = ${JSON.stringify(!!props.filterCommands)};
+  const FILTER_EMOTE_ONLY = ${JSON.stringify(!!props.filterEmoteOnly)};
   const MAX_VISIBLE = ${JSON.stringify(props.maxVisibleMessages ?? 3)};
   const DISPLAY_MS = ${JSON.stringify(props.messageDisplayMs ?? 6000)};
   const ICON_SVG = ${JSON.stringify(iconSvgByPlatform)};
@@ -72,7 +74,30 @@ export function buildChatOverlayScript(instanceId, props) {
         if (eqIdx !== -1) tags[pair.slice(0, eqIdx)] = pair.slice(eqIdx + 1);
       });
     }
-    return { username: tags['display-name'] || nick, message: message };
+    return { username: tags['display-name'] || nick, message: message, emotes: tags['emotes'] || '' };
+  }
+
+  function isEmoteOnlyMessage(message, emotesTag) {
+    if (!message || !message.trim() || !emotesTag) return false;
+    const covered = new Array(message.length).fill(false);
+    const entries = emotesTag.split('/');
+    for (let e = 0; e < entries.length; e++) {
+      const colonIdx = entries[e].indexOf(':');
+      if (colonIdx === -1) continue;
+      const ranges = entries[e].slice(colonIdx + 1).split(',');
+      for (let r = 0; r < ranges.length; r++) {
+        const parts = ranges[r].split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parseInt(parts[1], 10);
+        if (isNaN(start) || isNaN(end)) continue;
+        for (let i = Math.max(start, 0); i <= end && i < covered.length; i++) covered[i] = true;
+      }
+    }
+    for (let i = 0; i < message.length; i++) {
+      if (/\\s/.test(message[i])) continue;
+      if (!covered[i]) return false;
+    }
+    return true;
   }
 
   function parseKickChatEvent(rawPusherMessage) {
@@ -97,6 +122,12 @@ export function buildChatOverlayScript(instanceId, props) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.rate = TTS_RATE;
     utter.volume = TTS_VOLUME;
+    if (TTS_VOICE_NAME) {
+      const voices = window.speechSynthesis.getVoices();
+      for (let i = 0; i < voices.length; i++) {
+        if (voices[i].name === TTS_VOICE_NAME) { utter.voice = voices[i]; break; }
+      }
+    }
     utter.onend = function () { speaking = false; speakNext(); };
     utter.onerror = function () { speaking = false; speakNext(); };
     window.speechSynthesis.speak(utter);
@@ -129,8 +160,8 @@ export function buildChatOverlayScript(instanceId, props) {
   // update and the TTS enqueue always happen together here, never as
   // separate steps that could desync (same discipline
   // popup-slide-engine.js's setMessage() already established).
-  function handleIncomingMessage(platformKey, username, message) {
-    if (!message) return;
+  function handleIncomingMessage(platformKey, username, message, skip) {
+    if (!message || skip) return;
     if (FILTER_COMMANDS && message.trim().indexOf('!') === 0) return;
     addMessageToFeed(platformKey, username, message);
     if (TTS_ENABLED) {
@@ -160,7 +191,10 @@ export function buildChatOverlayScript(instanceId, props) {
         const line = lines[i];
         if (line.indexOf('PING') === 0) { ws.send('PONG :tmi.twitch.tv'); continue; }
         const parsed = parseTwitchIrcMessage(line);
-        if (parsed) handleIncomingMessage('twitch', parsed.username, parsed.message);
+        if (parsed) {
+          const skip = FILTER_EMOTE_ONLY && isEmoteOnlyMessage(parsed.message, parsed.emotes);
+          handleIncomingMessage('twitch', parsed.username, parsed.message, skip);
+        }
       }
     };
     ws.onclose = function () { setTimeout(function () { connectTwitch(channel); }, 5000); };

@@ -6,7 +6,7 @@
 // Run with: node src/chat-message-parsing.test.mjs
 // ============================================================================
 
-import { parseTwitchIrcMessage, parseKickChatEvent } from './chat-message-parsing.js';
+import { parseTwitchIrcMessage, parseKickChatEvent, isEmoteOnlyMessage } from './chat-message-parsing.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -40,6 +40,20 @@ assert(parseTwitchIrcMessage('') === null, 'an empty string returns null');
 assert(parseTwitchIrcMessage(null) === null, 'null input returns null, does not throw');
 assert(parseTwitchIrcMessage(undefined) === null, 'undefined input returns null, does not throw');
 assert(parseTwitchIrcMessage('garbage not irc at all') === null, 'a non-IRC-shaped string returns null');
+
+const emotesLine = '@display-name=Foo;emotes=25:0-4,6-10 :foo!foo@foo.tmi.twitch.tv PRIVMSG #chan :Kappa Kappa';
+const emotesParsed = parseTwitchIrcMessage(emotesLine);
+assert(emotesParsed !== null && emotesParsed.emotes === '25:0-4,6-10', `the emotes tag is extracted (got "${emotesParsed && emotesParsed.emotes}")`);
+assert(noTagsParsed.emotes === '', 'emotes is an empty string when the tag is absent, not undefined');
+
+// ---- isEmoteOnlyMessage ----
+assert(isEmoteOnlyMessage('Kappa Kappa', '25:0-4,6-10') === true, 'a message that is entirely two emotes (with a space between) is emote-only');
+assert(isEmoteOnlyMessage('hello Kappa', '25:6-10') === false, 'a message with real text plus an emote is not emote-only');
+assert(isEmoteOnlyMessage('Kappa', '') === false, 'no emotes tag at all means not emote-only, even if the text happens to match an emote name');
+assert(isEmoteOnlyMessage('', '25:0-4') === false, 'an empty message is not emote-only');
+assert(isEmoteOnlyMessage('hello', null) === false, 'a null emotes tag does not throw, returns false');
+assert(isEmoteOnlyMessage('Kappa', '25:0-4,99-105') === true, 'an out-of-range emote entry is ignored rather than throwing, and the in-range one still covers the message');
+assert(isEmoteOnlyMessage('Kappa', 'not-a-valid-entry') === false, 'a malformed emotes tag does not throw and does not mark the message emote-only');
 
 // ---- parseKickChatEvent ----
 

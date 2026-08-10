@@ -34,7 +34,38 @@ export function parseTwitchIrcMessage(rawLine) {
     username: tags['display-name'] || nick,
     message,
     color: tags.color || null,
+    emotes: tags.emotes || '',
   };
+}
+
+// Twitch's `emotes` IRC tag lists where emotes appear in the message as
+// "<emote-id>:<start>-<end>,<start>-<end>/<emote-id>:<start>-<end>...", where
+// start/end are inclusive UTF-16 code-unit indices into `message`. A message
+// is "emote-only" if every non-whitespace character falls inside one of
+// those ranges — used to exempt pure-emote messages from TTS/the visible
+// feed, the same way "!command" messages already are. Kick has no known
+// equivalent metadata, so this only ever applies to Twitch messages.
+export function isEmoteOnlyMessage(message, emotesTag) {
+  if (!message || !message.trim() || !emotesTag) return false;
+
+  const covered = new Array(message.length).fill(false);
+  for (const emoteEntry of emotesTag.split('/')) {
+    const colonIdx = emoteEntry.indexOf(':');
+    if (colonIdx === -1) continue;
+    for (const range of emoteEntry.slice(colonIdx + 1).split(',')) {
+      const [startStr, endStr] = range.split('-');
+      const start = parseInt(startStr, 10);
+      const end = parseInt(endStr, 10);
+      if (Number.isNaN(start) || Number.isNaN(end)) continue;
+      for (let i = Math.max(start, 0); i <= end && i < covered.length; i++) covered[i] = true;
+    }
+  }
+
+  for (let i = 0; i < message.length; i++) {
+    if (/\s/.test(message[i])) continue;
+    if (!covered[i]) return false;
+  }
+  return true;
 }
 
 // Kick's chat feed runs over Pusher, whose messages are a JSON envelope with

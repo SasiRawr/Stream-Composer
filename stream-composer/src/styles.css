@@ -216,6 +216,21 @@ button.block {
   margin-top: 8px;
 }
 
+.starter-template-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: #0a0a12;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.starter-template-option input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+.starter-template-option strong { color: #f2f1f9; font-size: 14px; }
+.starter-template-option .hint { margin-top: 2px; }
+
 .slide-card {
   background: #0a0a12;
   border: 1px solid rgba(255,255,255,0.08);
