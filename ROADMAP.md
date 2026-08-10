@@ -322,6 +322,9 @@ game launches. Per the rebrand rule above, if this gets rebuilt, it
 ships as a TheNerdyBox-branded tool, not "FabioZumbi12's Game Detector,
 improved."
 
+Full writeup also published for easy reading:
+https://claude.ai/code/artifact/215ed3f8-67bd-4afe-9a8a-51a280d50439
+
 ### Source read, 2026-08-10 — root cause confirmed, not just theorized
 
 Cloned the fork read-only and actually traced the detection code
