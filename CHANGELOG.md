@@ -4,6 +4,14 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.5.0 — 2026-08-10 (pre-release, pending verification)
+
+### Added
+- **+ Countdown Timer** item — set a target date/time, a label, and text
+  to show once it hits zero. Ticks down live once a second in the baked
+  output. Optionally fold the "days" segment into hours instead of
+  showing it separately.
+
 ## v1.4.0 — 2026-08-10 (pre-release, pending verification)
 
 ### Added

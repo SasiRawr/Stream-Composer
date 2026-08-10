@@ -108,6 +108,18 @@ function defaultPropsFor(type) {
       showAdultPlatforms: false,
     };
   }
+  if (type === 'countdown-timer') {
+    return {
+      targetDateTime: '', // '' = not set yet; a datetime-local string (e.g. "2026-12-31T18:00") once picked
+      label: 'Starting in',
+      completedText: "We're live!",
+      showDays: true,
+      fontColor: '#f2f1f9',
+      accentColor: '#7c5cff',
+      backgroundColor: '#0a0a12',
+      backgroundOpacity: 0.75,
+    };
+  }
   return {};
 }
 
@@ -115,6 +127,7 @@ function defaultSizeFor(type) {
   if (type === 'popup-slide') return { width: 640, height: 220 }; // matches v1's established canvas convention
   if (type === 'frame') return { width: 480, height: 270 };       // a reasonable webcam-frame-ish starting box
   if (type === 'chat-overlay') return { width: 420, height: 600 }; // a tall message-feed shape
+  if (type === 'countdown-timer') return { width: 420, height: 160 }; // a flat label+numbers bar
   return { width: 300, height: 300 };
 }
 
@@ -352,6 +365,7 @@ function frameFillValue(p) {
 const PLACEHOLDER_ACCENTS = {
   'popup-slide': '#a594ff',
   'chat-overlay': '#35e6c4',
+  'countdown-timer': '#ffb454',
 };
 
 function createRectFabricObject(item) {
@@ -502,6 +516,7 @@ function renderPropertiesPanel() {
   if (item.type === 'image') return renderImageProperties(item, body);
   if (item.type === 'popup-slide') return renderPopupSlideProperties(item, body);
   if (item.type === 'chat-overlay') return renderChatOverlayProperties(item, body);
+  if (item.type === 'countdown-timer') return renderCountdownTimerProperties(item, body);
 }
 
 function renderFrameProperties(item, body) {
@@ -1621,6 +1636,52 @@ function renderChatOverlayProperties(item, body) {
     .forEach((id) => document.getElementById(id).addEventListener('change', applyGeneral));
 }
 
+function renderCountdownTimerProperties(item, body) {
+  const p = item.props;
+
+  body.innerHTML = `
+    <div class="field">
+      <label for="pf-targetDateTime">Counts down to</label>
+      <input type="datetime-local" id="pf-targetDateTime" value="${escapeHtml(p.targetDateTime)}">
+    </div>
+    <div class="field">
+      <label for="pf-label">Label (shown above the countdown)</label>
+      <input type="text" id="pf-label" value="${escapeHtml(p.label)}">
+    </div>
+    <div class="field">
+      <label for="pf-completedText">Text shown once it reaches zero</label>
+      <input type="text" id="pf-completedText" value="${escapeHtml(p.completedText)}">
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="pf-showDays" ${p.showDays ? 'checked' : ''}> Show a separate "days" segment</label>
+      <div class="hint">When off, days are folded into the hours figure instead of being dropped (e.g. 2 days becomes "48" hours).</div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Text color</label><input type="color" id="pf-fontColor" value="${p.fontColor}"></div>
+      <div class="field"><label>Number color</label><input type="color" id="pf-accentColor" value="${p.accentColor}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Background color</label><input type="color" id="pf-backgroundColor" value="${p.backgroundColor}"></div>
+      <div class="field"><label>Background opacity (<span id="pf-backgroundOpacityValue">${Math.round(p.backgroundOpacity * 100)}</span>%)</label><input type="range" id="pf-backgroundOpacity" min="0" max="100" step="1" value="${Math.round(p.backgroundOpacity * 100)}"></div>
+    </div>
+    <div class="hint">Ticks down live in the baked output — there's no live preview here in the editor, same as the Chat + TTS Overlay and Popup Slide items.</div>
+  `;
+
+  const applyGeneral = () => {
+    p.targetDateTime = document.getElementById('pf-targetDateTime').value;
+    p.label = document.getElementById('pf-label').value;
+    p.completedText = document.getElementById('pf-completedText').value;
+    p.showDays = document.getElementById('pf-showDays').checked;
+    p.fontColor = document.getElementById('pf-fontColor').value;
+    p.accentColor = document.getElementById('pf-accentColor').value;
+    p.backgroundColor = document.getElementById('pf-backgroundColor').value;
+    p.backgroundOpacity = parseInt(document.getElementById('pf-backgroundOpacity').value, 10) / 100;
+    document.getElementById('pf-backgroundOpacityValue').textContent = document.getElementById('pf-backgroundOpacity').value;
+  };
+  ['pf-targetDateTime', 'pf-label', 'pf-completedText', 'pf-showDays', 'pf-fontColor', 'pf-accentColor', 'pf-backgroundColor', 'pf-backgroundOpacity']
+    .forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
+}
+
 function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -2233,6 +2294,7 @@ window.addEventListener('DOMContentLoaded', () => {
     addImageBtn: document.getElementById('addImageBtn'),
     addPopupSlideBtn: document.getElementById('addPopupSlideBtn'),
     addChatOverlayBtn: document.getElementById('addChatOverlayBtn'),
+    addCountdownTimerBtn: document.getElementById('addCountdownTimerBtn'),
     canvasSizeLabel: document.getElementById('canvasSizeLabel'),
     fabricCanvasEl: document.getElementById('fabricCanvas'),
     propertiesBody: document.getElementById('propertiesBody'),
@@ -2272,6 +2334,7 @@ window.addEventListener('DOMContentLoaded', () => {
   els.addImageBtn.addEventListener('click', addImageItem);
   els.addPopupSlideBtn.addEventListener('click', () => addItem('popup-slide'));
   els.addChatOverlayBtn.addEventListener('click', () => addItem('chat-overlay'));
+  els.addCountdownTimerBtn.addEventListener('click', () => addItem('countdown-timer'));
   els.deleteItemBtn.addEventListener('click', deleteSelectedItem);
 
   document.addEventListener('keydown', (e) => {

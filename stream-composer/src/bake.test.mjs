@@ -107,6 +107,21 @@ assert(chatHtml.includes('chat-c1-0-feed'), "the chat-overlay item's feed elemen
 assert(chatHtml.includes('connectTwitch("somestreamer")'), "an enabled platform's connect call reaches the baked output");
 assert(!chatHtml.includes('connectKick("'), 'a disabled platform does not get a connect call in the baked output');
 
+// ---- buildSceneHtml: countdown-timer item ----
+const countdownProject = baseProject([{
+  id: 'd1', type: 'countdown-timer', x: 0, y: 0, width: 420, height: 160, rotation: 0, zIndex: 0,
+  props: {
+    targetDateTime: '2026-12-31T18:00', label: 'Starting in', completedText: "We're live!",
+    showDays: true, fontColor: '#f2f1f9', accentColor: '#7c5cff', backgroundColor: '#0a0a12', backgroundOpacity: 0.75,
+  },
+}]);
+const countdownHtml = buildSceneHtml(countdownProject, {});
+assert(countdownHtml.includes('item-countdown-timer'), 'the countdown-timer item is rendered');
+assert(countdownHtml.includes('countdown-d1-0-grid'), "the countdown-timer item's grid element uses an instance-scoped id (got a match)");
+assert(countdownHtml.includes('Starting in'), "the item's label text reaches the baked output");
+assert(countdownHtml.includes('rgba(10, 10, 18, 0.75)'), 'the background color/opacity are converted to a real rgba() value');
+assert(countdownHtml.includes('setInterval'), "the countdown-timer's tick script is inlined");
+
 // ---- buildSceneHtml: items sort by zIndex regardless of array order ----
 const outOfOrder = baseProject([
   { id: 'top', type: 'frame', x: 0, y: 0, width: 10, height: 10, rotation: 0, zIndex: 5,

@@ -397,10 +397,8 @@ scoped or built:
   (`popup-slide-icons.js`) to reuse, and it's static content, no new
   risk category. Good candidate for an actual Starter Kit addition or
   new lightweight item type.
-- **Countdown timer overlay** — a "time until X" display (the example
-  shows a giveaway countdown). Genuinely simple and safe to build: pure
-  JS interval baked into `scene.html`, no network/live-verification risk
-  at all, similar shape to the existing popup-slide engine.
+- ~~**Countdown timer overlay**~~ — **built in v1.5.0**, see that section
+  below.
 - **Non-rectangular frame shapes** — the example's diamond-shaped webcam
   frame suggests frame shape options beyond rounded-rectangle (diamond,
   hexagon, circle). Moderate scope: CSS `clip-path` in the baked output,
@@ -433,6 +431,32 @@ Frame item's gradient fill elsewhere in the app.
 **Not built**: pattern/texture generation beyond solid/gradient/photo —
 kept to what "basic background imagery" actually asked for rather than
 guessing at a bigger scope.
+
+## v1.5.0: Countdown Timer overlay (2026-08-10)
+
+Still overnight, still "do another module" — picked the next-safest item
+off the backlog above rather than the riskier PNGTuber/social-links
+ideas, since it was already flagged as needing no network or
+live-verification risk at all.
+
+**Shipped**: a new **Countdown Timer** canvas item — set a target
+date/time, a label shown above it, and text to show once it hits zero;
+optionally fold the "days" segment into hours instead of showing it
+separately. Ticks down live once a second in the baked output, same
+"no live preview in the editor, dashed placeholder box instead" pattern
+as Popup Slide and Chat + TTS Overlay (this one gets its own accent
+color, `#ffb454`, so it's visually distinguishable from those two at a
+glance). New pure module `countdown-timer.js` (time math: days/hours/
+minutes/seconds remaining, zero-padding, the "fold days into hours"
+option — fully tested) plus `countdown-timer-engine.js` (the baked
+tick script, following `chat-tts-engine.js`'s established pattern of
+re-implementing the pure module's math inline since baked output has no
+module imports available — also tested, including a `new Function()`
+syntax-validity check on the generated script, same pattern added for
+the chat overlay in v1.3.0).
+
+**Not built**: nothing deferred here — this one was fully in scope as
+described.
 
 ## v0.8.0 – v0.9.0: two more standalone modules
 

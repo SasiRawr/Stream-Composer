@@ -16,6 +16,7 @@
 import { platformIconSvg } from './popup-slide-icons.js';
 import { buildPopupSlideScript } from './popup-slide-engine.js';
 import { buildChatOverlayScript } from './chat-tts-engine.js';
+import { buildCountdownTimerScript } from './countdown-timer-engine.js';
 
 // Escapes text for safe use inside an HTML attribute or text node.
 function escapeHtml(s) {
@@ -200,6 +201,54 @@ function renderChatOverlayItem(item, instanceId) {
   return { html, script };
 }
 
+// ---- COUNTDOWN TIMER ----------------------------------------------------
+// Ticks down to a target date/time set at edit time — no network, no
+// live-connection risk, pure client-side clock math. See
+// countdown-timer-engine.js for the actual runtime tick logic.
+function hexToRgba(hex, alpha) {
+  const clean = (hex || '').replace('#', '');
+  const r = parseInt(clean.slice(0, 2), 16) || 0;
+  const g = parseInt(clean.slice(2, 4), 16) || 0;
+  const b = parseInt(clean.slice(4, 6), 16) || 0;
+  const a = Math.max(0, Math.min(1, alpha ?? 1));
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function renderCountdownTimerItem(item, instanceId) {
+  const p = item.props;
+  const bg = hexToRgba(p.backgroundColor, p.backgroundOpacity);
+  const html = `
+<div class="item item-countdown-timer" style="${wrapperStyle(item)}">
+  <style>
+    #${instanceId} {
+      width: 100%; height: 100%; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 8px;
+      background: ${bg}; border-radius: 12px; box-sizing: border-box;
+      font-family: 'Inter', sans-serif; color: ${p.fontColor};
+    }
+    #${instanceId} .countdown-label { font-size: 14px; font-weight: 600; letter-spacing: 0.04em; opacity: 0.85; }
+    #${instanceId}-grid { display: flex; gap: 14px; }
+    #${instanceId}-grid .countdown-segment { display: flex; flex-direction: column; align-items: center; }
+    #${instanceId}-grid .countdown-segment span { font-size: 32px; font-weight: 800; color: ${p.accentColor}; font-variant-numeric: tabular-nums; }
+    #${instanceId}-grid .countdown-segment label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; }
+    #${instanceId}-complete { display: none; font-size: 22px; font-weight: 800; color: ${p.accentColor}; text-align: center; }
+  </style>
+  <div id="${instanceId}">
+    ${p.label ? `<div class="countdown-label">${escapeHtml(p.label)}</div>` : ''}
+    <div id="${instanceId}-grid">
+      <div class="countdown-segment" id="${instanceId}-days-wrap"><span id="${instanceId}-days">00</span><label>Days</label></div>
+      <div class="countdown-segment"><span id="${instanceId}-hours">00</span><label>Hours</label></div>
+      <div class="countdown-segment"><span id="${instanceId}-minutes">00</span><label>Min</label></div>
+      <div class="countdown-segment"><span id="${instanceId}-seconds">00</span><label>Sec</label></div>
+    </div>
+    <div id="${instanceId}-complete"></div>
+  </div>
+</div>`;
+
+  const script = buildCountdownTimerScript(instanceId, p);
+  return { html, script };
+}
+
 // ---- ASSET COLLECTION -------------------------------------------------
 // Every `image` item needs its source file copied into the output's
 // assets/ folder, and so does every popup-slide item's slide that uses a
@@ -247,6 +296,7 @@ export function buildSceneHtml(project, assetPathsById) {
     if (item.type === 'image') return renderImageItem(item, assetPathsById[item.id] || '');
     if (item.type === 'popup-slide') return renderPopupSlideItem(item, `popup-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     if (item.type === 'chat-overlay') return renderChatOverlayItem(item, `chat-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
+    if (item.type === 'countdown-timer') return renderCountdownTimerItem(item, `countdown-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
     return { html: '', script: '' };
   });
 
