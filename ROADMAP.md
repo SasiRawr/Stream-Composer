@@ -320,16 +320,21 @@ real calls, plus set the sequencing for everything up to v2.0.0.
   Verified reachable inside the Docker network (`/health` responds
   correctly). A real relay key was generated and staged server-side.
 
-  **One remaining blocker, confirmed directly from Traefik's own logs**:
-  no DNS record exists yet for `tts-relay.thenerdybox.com` (confirmed via
-  `nslookup` — NXDOMAIN — and Traefik's ACME HTTP-01 challenge failing
-  for the identical reason). Needs an A record wherever `thenerdybox.com`
-  DNS is managed, pointing at the same IP as `auth.thenerdybox.com`
-  (`64.184.103.252`). This session has no DNS provider access — genuinely
-  needs Harvey, not something to guess around.
+  **DNS record confirmed live, 2026-08-11** — `tts-relay.thenerdybox.com`
+  now resolves to `64.184.103.252` (verified via `nslookup`), the
+  original blocker. **Harvey has also completed the AWS account + IAM
+  user setup** (scoped to `polly:SynthesizeSpeech` only, per the setup
+  guide: https://claude.ai/code/artifact/06d3257b-9bd7-4bd8-b309-5af45f672702)
+  and is providing the real access key/secret. Remaining work to actually
+  close task #34: write the real credentials into the relay's `.env` on
+  CT101, restart the container, verify a real Polly request round-trips
+  through it end-to-end, and decide whether/how the desktop app's Chat +
+  TTS Overlay should offer a "use the relay" mode (a relay key, no AWS
+  account needed) alongside the existing bring-your-own-AWS-key mode —
+  not yet decided, this is the "bake it into the app" step Harvey asked
+  about.
 
-  Still remaining after DNS: Harvey's real AWS credentials (still empty
-  placeholders server-side), the TikTok relay endpoint (waiting on the
+  Still remaining after that: the TikTok relay endpoint (waiting on the
   Euler Stream CORS question below), and the desktop app's own
   client-side "relay" TTS provider option in `chat-tts-engine.js` (needs
   the real relay URL working end-to-end first, not started).
@@ -635,6 +640,54 @@ dropdown greyed out with an explanation, matching this project's
 "never silently omit, always show why" convention (same pattern as the
 Kick placeholder-key gap).
 
+### A native OBS companion plugin — one real gap found, most of it doesn't need one (2026-08-11)
+
+Harvey asked whether a native OBS Studio plugin (same C++/libobs
+toolchain already stood up for game-detector) would meaningfully help
+this app beyond what remote-control via `obs-websocket` already covers.
+Real research, not a guess: **mostly no, with one genuine exception.**
+
+`obs-websocket` v5+ (built into OBS 28+) already covers everything this
+app's own remote-automation plans (task #47) need — adding/updating a
+Browser Source's URL, switching scenes, reading state. A native plugin
+only earns its keep for things WebSocket structurally can't do: custom
+source types, direct audio/video-pipeline hooks with real sub-frame
+latency, or fixing something OBS itself doesn't expose a WebSocket
+verb for.
+
+**The one real gap found**: Browser Source **cache refresh has no
+WebSocket API at all** — confirmed via a live, years-old open feature
+request on `obs-websocket`'s own GitHub (issue #1171), and a real
+community plugin (`xObsBrowserAutoRefresh`) already exists specifically
+to work around it. This is a genuine, current pain point for exactly
+this app's use case — every version's `WHAT_TO_TEST.md` already tells
+Harvey to manually right-click → Properties → "Refresh cache of current
+page" after re-baking. A small, focused native plugin ("watch the baked
+output folder, poke OBS to refresh the linked Browser Source when it
+changes") would remove that manual step entirely — real value, small
+scope (~500 lines of C++ per the research), low ongoing maintenance
+since it doesn't touch OBS's audio/video pipeline at all.
+
+**Not worth it**: a broader "recreate the overlay natively in C++"
+plugin — the Tauri app already generates correct HTML; duplicating that
+in C++ gains nothing and adds a second thing to keep in sync. For
+mic-reactive items (PNGTuber, task #37): Web Audio API's Browser-Source
+latency (~16-33ms) vs. a native audio hook's ~1-frame (~23ms) is not a
+meaningfully different experience for this use case — not a reason to
+go native.
+
+**Real-world precedent found**: StreamElements ships both a native
+OBS.Live fork *and* Browser Source support; Streamlabs stayed standalone
+software with no native plugin at all. Two legitimate players landed on
+different answers — there's no single "correct" approach here, it's a
+scope/value tradeoff each product makes for itself.
+
+**Verdict**: worth building eventually as a small, single-purpose
+plugin (cache-refresh watcher), not worth building as a general-purpose
+companion. Not scheduled to a specific version yet — task #48, folds
+naturally into whichever version ends up tackling task #47 (OBS
+WebSocket automation), since they're solving adjacent problems.
+
 ### PNGTuber/VTuber — PNGTuber is small and near-term, full VTuber is a
 ### separate, much bigger project
 
@@ -658,13 +711,47 @@ bigger problem. **Recommendation**: build PNGTuber first if either gets
 picked up — VTuber support deserves its own dedicated scoping pass later,
 not bundled in as "the same feature, just fancier."
 
-**Overlap with the webcam eye-tracking idea (task #35)**: real but
-limited — MediaPipe's face landmarks include eye-region points, a
-plausible starting point, but gaze *direction* estimation is a distinct,
-harder problem than facial-landmark animation tracking. Current
-webcam-based gaze research lands around 2-3° of error vs. Tobii
-hardware's ~1.6° — share the underlying CV tooling/pipeline concept, not
-a shared solution. Don't assume solving one gets the other for free.
+**Overlap with the webcam eye-tracking idea** (spun out to its own
+project idea, no longer tracked here — see the
+`idea_webcam-eye-gaze-tracking` memory): real but limited — MediaPipe's
+face landmarks include eye-region points, a plausible starting point,
+but gaze *direction* estimation is a distinct, harder problem than
+facial-landmark animation tracking. Current webcam-based gaze research
+lands around 2-3° of error vs. Tobii hardware's ~1.6° — share the
+underlying CV tooling/pipeline concept, not a shared solution. Don't
+assume solving one gets the other for free.
+
+### Multi-participant Discord-voice PNGTuber — genuinely simpler than expected, no bot needed (2026-08-11)
+
+Harvey described a real feature seen elsewhere: multiple people in a
+Discord voice call, each with their own on-screen character, where only
+the person currently talking animates. The concern going in was that
+this needs a Discord bot + backend infrastructure (the same class of gap
+already blocking event-triggered viewer pets and Twitch EventSub). Real
+research found the opposite.
+
+**Discord's own official StreamKit** (`streamkit.discord.com`) already
+broadcasts real per-user speaking state (`SPEAKING_START`/
+`SPEAKING_STOP`, tagged per Discord user, not just "someone is
+talking") directly to a browser context via the Discord desktop client
+— **no bot, no bot token, no OAuth, no server infrastructure at all.**
+The streaming PC just needs Discord's desktop app connected to the call
+plus a small local page listening to those events, mapping each Discord
+username to an idle/talking avatar pair. Confirmed via real existing
+tools already doing exactly this: **SpeakForge** (standalone app,
+connects directly to StreamKit, serves a local overlay URL to paste into
+OBS) and **PNGStage** (web-based, built for exactly this "PNGTuber
+collab stream" use case).
+
+**Verdict: genuinely buildable, and simpler than Twitch's EventSub path**
+(which needs real OAuth + webhook infra this app doesn't have). This
+turns the single-streamer PNGTuber (task #37) and the multi-participant
+version into a natural two-phase build of the *same* feature rather than
+two unrelated ones — build the single-mic version first, then extend it
+with a StreamKit listener + per-user avatar mapping once that's solid.
+Not yet scoped into a specific version — task #49's research is done,
+a real build-scoping pass is the next step whenever this gets picked up
+after task #37 ships.
 
 ### Viewer pets/overlay games — two different features hiding under one
 ### name, only one is near-term buildable
@@ -1243,29 +1330,50 @@ standalone module/release — same incremental pattern as v0.2.0–v0.9.0 —
    want shown by default, adult-streaming sites specifically named) —
    no adult-platform connector exists yet, just the visibility
    plumbing for whenever that gets its own scoping conversation.
-3. Asset library / reusable components.
-4. Template personalization (re-color/re-text without a full re-edit).
-5. Real OBS WebSocket automation for the Overlay Asset Workflow (auto-
-   adding/updating the Browser Source in a running OBS instance, instead
-   of the user pointing OBS at the baked scene.html by hand) — deferred
-   out of v1.0.0's Overlay Asset Workflow pass (2026-08-06) since it's a
-   meaningfully bigger scope/risk surface (a live connection to a
-   separate running app) than the rest of that pass, which stayed to
-   in-app improvements only (remembered bake folder, one-click OBS setup
-   instructions, single-item preview).
+3. **Asset library / reusable components** — not yet scoped in real
+   detail. Task #45.
+4. **Template personalization** (re-color/re-text without a full
+   re-edit) — not yet scoped in real detail, likely the smallest of the
+   three remaining items since it can probably reuse the Starter Kit's
+   existing brand-color/template infrastructure. Task #46.
+5. **Real OBS WebSocket automation** for the Overlay Asset Workflow
+   (auto-adding/updating the Browser Source in a running OBS instance,
+   instead of the user pointing OBS at the baked scene.html by hand) —
+   deferred out of v1.0.0's Overlay Asset Workflow pass (2026-08-06)
+   since it's a meaningfully bigger scope/risk surface (a live connection
+   to a separate running app) than the rest of that pass, which stayed
+   to in-app improvements only (remembered bake folder, one-click OBS
+   setup instructions, single-item preview). Task #47, not yet
+   researched — a parallel question about whether a *native* OBS plugin
+   (not just obs-websocket) is worth building alongside this is being
+   researched as task #48.
 
-**Version budget (Harvey's explicit constraint, 2026-08-05):** prefer to
-land this whole series **under v1.10.0**; **v1.15.0 is the absolute
-max**; **do not exceed v1.16.0 under any circumstance**. With 4 items
-above, even a strict one-item-per-release pace only needs v1.1.0 through
-v1.4.0 — comfortably inside budget. That headroom (up to v1.15.0) exists
-specifically so more items can be added to this list from continued
-brainstorming without blowing the ceiling — it's slack for scope growth,
-not an invitation to pad the version count. A single release is free to
-bundle multiple related items together (e.g. asset library + template
-personalization might ship as one release if they turn out to overlap
-significantly) if that's a better fit than one-per-version — the budget
-is a ceiling, not a target to fill.
+This series grew substantially past its original 5-item scope while
+items #1 and #2 were being built — item #2 (Chat + TTS Overlay)
+specifically expanded from "Twitch + Kick" into TikTok (v1.7.0), Amazon
+Polly (v1.6.0), Kokoro local TTS (v1.9.0), a dropdown/multi-chat
+redesign (v1.8.0), and soon Chatterbox (v1.9.0-b) — all real, all
+shipped, just far beyond the original one-line description. Items #3-5
+are the only pieces of the *original* 5-item list still genuinely
+unbuilt.
+
+**Version budget, updated 2026-08-11**: originally "prefer under
+v1.10.0, absolute max v1.15.0, hard ceiling v1.16.0" (set 2026-08-05,
+before the series grew as described above). Harvey raised the soft
+ceiling explicitly: **new soft target is v1.15.0** (the old absolute
+max), same v1.16.0 hard ceiling as before, "just in case" — acknowledging
+the series ran past the original v1.10.0 target, not a blank check to
+pad versions further than needed.
+
+**Sequencing agreed 2026-08-11**: Chatterbox ships as **v1.9.0-b**
+(task #44, a same-topic patch addition to the just-shipped v1.9.0, using
+this project's existing letter-suffix convention rather than a full new
+minor version). Then **v1.10.0 = PNGTuber** (task #37) and **v1.11.0 =
+chat-triggered viewer pets** (task #38) — both already researched as
+near-term buildable. Items #3-5 above (asset library, template
+personalization, OBS WebSocket automation) fill in after that, in
+whatever order they end up scoped, before the series closes out and
+v2.0.0 planning begins in earnest.
 
 ## v2.0.0: combine again, the TTS/alerts launch
 
