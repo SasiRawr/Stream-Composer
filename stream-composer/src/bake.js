@@ -17,6 +17,7 @@ import { platformIconSvg } from './popup-slide-icons.js';
 import { buildPopupSlideScript } from './popup-slide-engine.js';
 import { buildChatOverlayScript } from './chat-tts-engine.js';
 import { buildCountdownTimerScript } from './countdown-timer-engine.js';
+import { buildPngtuberScript } from './pngtuber-engine.js';
 
 // Escapes text for safe use inside an HTML attribute or text node.
 function escapeHtml(s) {
@@ -249,6 +250,32 @@ function renderCountdownTimerItem(item, instanceId) {
   return { html, script };
 }
 
+// ---- PNGTUBER --------------------------------------------------------
+// idleAssetPath/talkingAssetPath come from collectAssetCopies() below,
+// same lookup-by-compound-key pattern popup-slide's custom icons use.
+// The status/permission-hint text sits UNDER the image (not overlapping
+// it) so it's readable even before the streamer has resized the item to
+// fit their actual character art.
+function renderPngtuberItem(item, instanceId, assetPathsById) {
+  const idleAssetPath = assetPathsById[`${item.id}::idle`] || '';
+  const talkingAssetPath = assetPathsById[`${item.id}::talking`] || '';
+  const html = `
+<div class="item item-pngtuber" style="${wrapperStyle(item)}">
+  <style>
+    #${instanceId}-wrap { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #${instanceId}-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    #${instanceId}-status { font-family: 'Inter', sans-serif; font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; margin-top: 6px; }
+  </style>
+  <div id="${instanceId}-wrap">
+    <img id="${instanceId}-img" src="${escapeHtml(idleAssetPath)}" alt="">
+    <div id="${instanceId}-status"></div>
+  </div>
+</div>`;
+
+  const script = buildPngtuberScript(instanceId, idleAssetPath, talkingAssetPath, item.props);
+  return { html, script };
+}
+
 // ---- ASSET COLLECTION -------------------------------------------------
 // Every `image` item needs its source file copied into the output's
 // assets/ folder, and so does every popup-slide item's slide that uses a
@@ -279,6 +306,24 @@ export function collectAssetCopies(project) {
         }
       });
     }
+    if (item.type === 'pngtuber') {
+      if (item.props.idleImagePath) {
+        const ext = (item.props.idleImagePath.split('.').pop() || 'png').toLowerCase();
+        copies.push({
+          itemId: `${item.id}::idle`,
+          sourcePath: item.props.idleImagePath,
+          destRelativePath: `assets/${item.id}-idle.${ext}`,
+        });
+      }
+      if (item.props.talkingImagePath) {
+        const ext = (item.props.talkingImagePath.split('.').pop() || 'png').toLowerCase();
+        copies.push({
+          itemId: `${item.id}::talking`,
+          sourcePath: item.props.talkingImagePath,
+          destRelativePath: `assets/${item.id}-talking.${ext}`,
+        });
+      }
+    }
   }
   return copies;
 }
@@ -297,6 +342,7 @@ export function buildSceneHtml(project, assetPathsById) {
     if (item.type === 'popup-slide') return renderPopupSlideItem(item, `popup-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     if (item.type === 'chat-overlay') return renderChatOverlayItem(item, `chat-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
     if (item.type === 'countdown-timer') return renderCountdownTimerItem(item, `countdown-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
+    if (item.type === 'pngtuber') return renderPngtuberItem(item, `pngtuber-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     return { html: '', script: '' };
   });
 

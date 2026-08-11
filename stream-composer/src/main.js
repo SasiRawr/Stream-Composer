@@ -164,6 +164,14 @@ function defaultPropsFor(type) {
       backgroundOpacity: 0.75,
     };
   }
+  if (type === 'pngtuber') {
+    return {
+      idleImagePath: '',
+      talkingImagePath: '',
+      micThreshold: 15, // percent sensitivity, 0-100 — see pngtuber-engine.js for how this maps to a 0-1 RMS threshold
+      holdMs: 200,       // how long the talking image stays up through brief pauses before falling back to idle
+    };
+  }
   return {};
 }
 
@@ -172,6 +180,7 @@ function defaultSizeFor(type) {
   if (type === 'frame') return { width: 480, height: 270 };       // a reasonable webcam-frame-ish starting box
   if (type === 'chat-overlay') return { width: 420, height: 600 }; // a tall message-feed shape
   if (type === 'countdown-timer') return { width: 420, height: 160 }; // a flat label+numbers bar
+  if (type === 'pngtuber') return { width: 320, height: 320 };    // roughly square, typical character-art proportions
   return { width: 300, height: 300 };
 }
 
@@ -410,6 +419,7 @@ const PLACEHOLDER_ACCENTS = {
   'popup-slide': '#a594ff',
   'chat-overlay': '#35e6c4',
   'countdown-timer': '#ffb454',
+  'pngtuber': '#ff6ec4',
 };
 
 function createRectFabricObject(item) {
@@ -561,6 +571,7 @@ function renderPropertiesPanel() {
   if (item.type === 'popup-slide') return renderPopupSlideProperties(item, body);
   if (item.type === 'chat-overlay') return renderChatOverlayProperties(item, body);
   if (item.type === 'countdown-timer') return renderCountdownTimerProperties(item, body);
+  if (item.type === 'pngtuber') return renderPngtuberProperties(item, body);
 }
 
 function renderFrameProperties(item, body) {
@@ -2014,6 +2025,52 @@ function renderCountdownTimerProperties(item, body) {
     .forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
 }
 
+function renderPngtuberProperties(item, body) {
+  const p = item.props;
+
+  body.innerHTML = `
+    <div class="field"><label>Idle image (shown when quiet)</label>
+      <div class="hint">${escapeHtml(p.idleImagePath || 'No image chosen yet')}</div>
+    </div>
+    <button class="secondary block" id="pf-pickIdleImage" type="button">Choose idle image…</button>
+    <div class="field"><label>Talking image (shown while you're speaking)</label>
+      <div class="hint">${escapeHtml(p.talkingImagePath || 'No image chosen yet')}</div>
+    </div>
+    <button class="secondary block" id="pf-pickTalkingImage" type="button">Choose talking image…</button>
+    <div class="field">
+      <label>Mic sensitivity (<span id="pf-micThresholdValue">${p.micThreshold}</span>%)</label>
+      <input type="range" id="pf-micThreshold" min="1" max="80" step="1" value="${p.micThreshold}">
+      <div class="hint">Lower = swaps to the talking image more easily (picks up quieter sounds). Raise this if it's triggering on background noise or your mic's natural hiss.</div>
+    </div>
+    <div class="field">
+      <label>Hold time after you stop talking (ms)</label>
+      <input type="number" id="pf-holdMs" min="0" max="2000" step="50" value="${p.holdMs}">
+      <div class="hint">Keeps the talking image up briefly through short pauses (like mid-sentence breaths) instead of flickering back to idle on every gap.</div>
+    </div>
+    <div class="hint">Reacts to your live microphone only in the baked output (in OBS) — there's no live preview here in the editor. The first time this loads in OBS, you'll need to grant it microphone access: right-click the Browser Source → Interact → allow the microphone prompt, then refresh.</div>
+  `;
+
+  document.getElementById('pf-pickIdleImage').addEventListener('click', async () => {
+    const path = await invoke('pick_image_file');
+    if (!path) return;
+    p.idleImagePath = path;
+    renderPropertiesPanel();
+  });
+  document.getElementById('pf-pickTalkingImage').addEventListener('click', async () => {
+    const path = await invoke('pick_image_file');
+    if (!path) return;
+    p.talkingImagePath = path;
+    renderPropertiesPanel();
+  });
+
+  const applyGeneral = () => {
+    p.micThreshold = parseInt(document.getElementById('pf-micThreshold').value, 10) || 15;
+    p.holdMs = parseInt(document.getElementById('pf-holdMs').value, 10) || 0;
+    document.getElementById('pf-micThresholdValue').textContent = document.getElementById('pf-micThreshold').value;
+  };
+  ['pf-micThreshold', 'pf-holdMs'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
+}
+
 function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -2627,6 +2684,7 @@ window.addEventListener('DOMContentLoaded', () => {
     addPopupSlideBtn: document.getElementById('addPopupSlideBtn'),
     addChatOverlayBtn: document.getElementById('addChatOverlayBtn'),
     addCountdownTimerBtn: document.getElementById('addCountdownTimerBtn'),
+    addPngtuberBtn: document.getElementById('addPngtuberBtn'),
     canvasSizeLabel: document.getElementById('canvasSizeLabel'),
     fabricCanvasEl: document.getElementById('fabricCanvas'),
     propertiesBody: document.getElementById('propertiesBody'),
@@ -2667,6 +2725,7 @@ window.addEventListener('DOMContentLoaded', () => {
   els.addPopupSlideBtn.addEventListener('click', () => addItem('popup-slide'));
   els.addChatOverlayBtn.addEventListener('click', () => addItem('chat-overlay'));
   els.addCountdownTimerBtn.addEventListener('click', () => addItem('countdown-timer'));
+  els.addPngtuberBtn.addEventListener('click', () => addItem('pngtuber'));
   els.deleteItemBtn.addEventListener('click', deleteSelectedItem);
 
   document.addEventListener('keydown', (e) => {

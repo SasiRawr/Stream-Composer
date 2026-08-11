@@ -4,6 +4,27 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.10.0 — 2026-08-11 (pre-release, pending verification)
+
+### Added
+- **PNGTuber overlay item** — a new canvas item type: pick an "idle"
+  image and a "talking" image, and it swaps between them live based on
+  your own microphone volume, the same mechanism free tools like
+  Veadotube Mini use. Adjustable mic sensitivity and a hold-time setting
+  so it doesn't flicker between images during brief pauses mid-sentence.
+- Needs one-time microphone permission granted to the Browser Source in
+  OBS (right-click the source → Interact → allow the mic prompt) — this
+  is the first item type in the app that asks for a media permission,
+  not just network access.
+
+### Verification note
+The mic-volume-detection script was tested for correct string generation
+and syntax validity (33 automated tests total across the app, including
+17 new for this item), but the actual live "does it correctly detect my
+voice through OBS's Browser Source" behavior needs a human with a real
+microphone — flagged in `WHAT_TO_TEST.md`, same as every other
+live-behavior feature in this app.
+
 ## v1.9.1 — 2026-08-11 (pre-release, pending verification)
 
 ### Added

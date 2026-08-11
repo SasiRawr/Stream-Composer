@@ -122,6 +122,31 @@ assert(countdownHtml.includes('Starting in'), "the item's label text reaches the
 assert(countdownHtml.includes('rgba(10, 10, 18, 0.75)'), 'the background color/opacity are converted to a real rgba() value');
 assert(countdownHtml.includes('setInterval'), "the countdown-timer's tick script is inlined");
 
+// ---- collectAssetCopies: pngtuber idle + talking images ----
+const pngtuberProject = baseProject([{
+  id: 'p1', type: 'pngtuber', x: 0, y: 0, width: 300, height: 300, rotation: 0, zIndex: 0,
+  props: { idleImagePath: 'C:/art/idle.png', talkingImagePath: 'C:/art/talking.png', micThreshold: 15, holdMs: 200 },
+}]);
+const pngtuberCopies = collectAssetCopies(pngtuberProject);
+assert(pngtuberCopies.length === 2, `a pngtuber item with both images set produces exactly 2 asset copies (got ${pngtuberCopies.length})`);
+assert(pngtuberCopies.some((c) => c.itemId === 'p1::idle' && c.destRelativePath === 'assets/p1-idle.png'), 'the idle image gets its own compound-keyed copy entry');
+assert(pngtuberCopies.some((c) => c.itemId === 'p1::talking' && c.destRelativePath === 'assets/p1-talking.png'), 'the talking image gets its own compound-keyed copy entry');
+
+const pngtuberNoImagesProject = baseProject([{
+  id: 'p2', type: 'pngtuber', x: 0, y: 0, width: 300, height: 300, rotation: 0, zIndex: 0,
+  props: { idleImagePath: '', talkingImagePath: '', micThreshold: 15, holdMs: 200 },
+}]);
+assert(collectAssetCopies(pngtuberNoImagesProject).length === 0, 'a pngtuber item with no images set yet produces no asset copies (not a crash)');
+
+// ---- buildSceneHtml: pngtuber item ----
+const pngtuberHtml = buildSceneHtml(pngtuberProject, { 'p1::idle': 'assets/p1-idle.png', 'p1::talking': 'assets/p1-talking.png' });
+assert(pngtuberHtml.includes('item-pngtuber'), 'the pngtuber item is rendered');
+assert(pngtuberHtml.includes('pngtuber-p1-0-img'), "the pngtuber item's image element uses an instance-scoped id (got a match)");
+assert(pngtuberHtml.includes('src="assets/p1-idle.png"'), 'the img tag starts pointed at the idle image');
+assert(pngtuberHtml.includes('IDLE_SRC = "assets/p1-idle.png"'), 'the idle asset path reaches the inlined script');
+assert(pngtuberHtml.includes('TALKING_SRC = "assets/p1-talking.png"'), 'the talking asset path reaches the inlined script');
+assert(pngtuberHtml.includes('getUserMedia'), "the pngtuber item's mic-detection script is inlined");
+
 // ---- buildSceneHtml: items sort by zIndex regardless of array order ----
 const outOfOrder = baseProject([
   { id: 'top', type: 'frame', x: 0, y: 0, width: 10, height: 10, rotation: 0, zIndex: 5,
