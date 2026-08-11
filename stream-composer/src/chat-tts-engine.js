@@ -45,9 +45,15 @@ export function buildChatOverlayScript(instanceId, props) {
   return `
 (function () {
   const TTS_ENABLED = ${JSON.stringify(!!props.ttsEnabled)};
+  const TTS_PROVIDER = ${JSON.stringify(props.ttsProvider || 'browser')};
   const TTS_RATE = ${JSON.stringify(props.ttsRate ?? 1)};
   const TTS_VOLUME = ${JSON.stringify(props.ttsVolume ?? 1)};
   const TTS_VOICE_NAME = ${JSON.stringify(props.ttsVoiceName || '')};
+  const POLLY_ACCESS_KEY_ID = ${JSON.stringify(props.pollyAccessKeyId || '')};
+  const POLLY_SECRET_ACCESS_KEY = ${JSON.stringify(props.pollySecretAccessKey || '')};
+  const POLLY_REGION = ${JSON.stringify(props.pollyRegion || 'us-east-1')};
+  const POLLY_VOICE_ID = ${JSON.stringify(props.pollyVoiceId || 'Joanna')};
+  const POLLY_ENGINE = ${JSON.stringify(props.pollyEngine || 'neural')};
   const FILTER_COMMANDS = ${JSON.stringify(!!props.filterCommands)};
   const FILTER_EMOTE_ONLY = ${JSON.stringify(!!props.filterEmoteOnly)};
   const MAX_VISIBLE = ${JSON.stringify(props.maxVisibleMessages ?? 3)};
@@ -116,6 +122,11 @@ export function buildChatOverlayScript(instanceId, props) {
   let speaking = false;
 
   function speakNext() {
+    if (TTS_PROVIDER === 'polly') { speakNextPolly(); return; }
+    speakNextBrowser();
+  }
+
+  function speakNextBrowser() {
     if (speaking || ttsQueue.length === 0 || !window.speechSynthesis) return;
     speaking = true;
     const text = ttsQueue.shift();
@@ -131,6 +142,96 @@ export function buildChatOverlayScript(instanceId, props) {
     utter.onend = function () { speaking = false; speakNext(); };
     utter.onerror = function () { speaking = false; speakNext(); };
     window.speechSynthesis.speak(utter);
+  }
+
+  // ---- Amazon Polly TTS (bring-your-own-AWS-key, opt-in) ----
+  // Same SigV4 request-signing logic as polly-tts.js, using the identical
+  // Web Crypto API calls (crypto.subtle) that module's tests run against -
+  // this is a straight copy, not a re-implementation from a different API,
+  // since crypto.subtle is available both in Node (where it's tested) and
+  // here in the baked browser/WebView2 context.
+  let pollyWarnedOnce = false;
+
+  function pollyToHex(buffer) {
+    return Array.from(new Uint8Array(buffer)).map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+  async function pollySha256Hex(text) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return pollyToHex(digest);
+  }
+  async function pollyHmacRaw(keyBytes, message) {
+    const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+  }
+  async function pollyDeriveSigningKey(secretKey, dateStamp, region, service) {
+    const kDate = await pollyHmacRaw(new TextEncoder().encode('AWS4' + secretKey), dateStamp);
+    const kRegion = await pollyHmacRaw(new Uint8Array(kDate), region);
+    const kService = await pollyHmacRaw(new Uint8Array(kRegion), service);
+    return pollyHmacRaw(new Uint8Array(kService), 'aws4_request');
+  }
+  async function buildPollySignedRequest(text, now) {
+    const region = POLLY_REGION;
+    const host = 'polly.' + region + '.amazonaws.com';
+    const canonicalUri = '/v1/speech';
+    const service = 'polly';
+    const iso = now.toISOString().replace(/[:-]|\\.\\d{3}/g, '');
+    const amzDate = iso;
+    const dateStamp = iso.slice(0, 8);
+    const credentialScope = dateStamp + '/' + region + '/' + service + '/aws4_request';
+
+    const body = JSON.stringify({
+      OutputFormat: 'mp3',
+      Text: text,
+      VoiceId: POLLY_VOICE_ID,
+      Engine: POLLY_ENGINE,
+      TextType: 'text',
+    });
+    const hashedPayload = await pollySha256Hex(body);
+    const canonicalHeaders = 'content-type:application/json\\nhost:' + host + '\\nx-amz-date:' + amzDate + '\\n';
+    const signedHeaders = 'content-type;host;x-amz-date';
+    const canonicalRequest = ['POST', canonicalUri, '', canonicalHeaders, signedHeaders, hashedPayload].join('\\n');
+    const hashedCanonicalRequest = await pollySha256Hex(canonicalRequest);
+    const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, hashedCanonicalRequest].join('\\n');
+    const signingKey = await pollyDeriveSigningKey(POLLY_SECRET_ACCESS_KEY, dateStamp, region, service);
+    const signatureBuf = await pollyHmacRaw(new Uint8Array(signingKey), stringToSign);
+    const signature = pollyToHex(signatureBuf);
+    const authorization = 'AWS4-HMAC-SHA256 Credential=' + POLLY_ACCESS_KEY_ID + '/' + credentialScope + ', SignedHeaders=' + signedHeaders + ', Signature=' + signature;
+
+    return {
+      url: 'https://' + host + canonicalUri,
+      headers: { 'Content-Type': 'application/json', 'X-Amz-Date': amzDate, Authorization: authorization },
+      body: body,
+    };
+  }
+
+  let pollyAudioEl = null;
+  async function speakNextPolly() {
+    if (speaking || ttsQueue.length === 0) return;
+    if (!POLLY_ACCESS_KEY_ID || !POLLY_SECRET_ACCESS_KEY) {
+      if (!pollyWarnedOnce) { pollyWarnedOnce = true; console.warn('Chat + TTS Overlay: Polly selected as the TTS provider but no AWS access key / secret key is set - voice playback is skipped until both are filled in.'); }
+      ttsQueue.length = 0;
+      return;
+    }
+    speaking = true;
+    const text = ttsQueue.shift();
+    try {
+      const req = await buildPollySignedRequest(text, new Date());
+      const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: req.body });
+      if (!res.ok) throw new Error('Polly request failed: ' + res.status);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      if (!pollyAudioEl) pollyAudioEl = new Audio();
+      pollyAudioEl.src = objectUrl;
+      pollyAudioEl.volume = TTS_VOLUME;
+      pollyAudioEl.playbackRate = TTS_RATE;
+      pollyAudioEl.onended = function () { URL.revokeObjectURL(objectUrl); speaking = false; speakNext(); };
+      pollyAudioEl.onerror = function () { URL.revokeObjectURL(objectUrl); speaking = false; speakNext(); };
+      await pollyAudioEl.play();
+    } catch (e) {
+      console.warn('Chat + TTS Overlay: Polly request failed', e);
+      speaking = false;
+      speakNext();
+    }
   }
 
   // speechSynthesis.getVoices() is empty until the voiceschanged event

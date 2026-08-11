@@ -30,6 +30,7 @@ import { renderStingerFrame } from './stinger-render.js';
 import { checkAlphaSupport, exportStinger } from './stinger-export.js';
 import { CHAT_PLATFORMS, visibleChatPlatforms } from './chat-platforms.js';
 import { defaultBackgroundProps, drawBackground } from './background-generator.js';
+import { defaultPollyProps, POLLY_VOICE_SUGGESTIONS } from './polly-tts.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -101,6 +102,7 @@ function defaultPropsFor(type) {
       ttsRate: 1,
       ttsVolume: 1,
       ttsVoiceName: '', // '' = browser/OS default voice
+      ...defaultPollyProps(), // ttsProvider ('browser'|'polly') + Polly credentials/voice/region/engine
       filterCommands: true,
       filterEmoteOnly: true, // Twitch only for now — Kick's chat feed doesn't expose emote-position metadata
       maxVisibleMessages: 3,
@@ -1577,13 +1579,49 @@ function renderChatOverlayProperties(item, body) {
     <div class="field">
       <label><input type="checkbox" id="pf-ttsEnabled" ${p.ttsEnabled ? 'checked' : ''}> Read messages aloud (TTS)</label>
     </div>
+    <div class="field">
+      <label>Voice source</label>
+      <select id="pf-ttsProvider">
+        <option value="browser" ${p.ttsProvider !== 'polly' ? 'selected' : ''}>Free (your Windows/browser voices)</option>
+        <option value="polly" ${p.ttsProvider === 'polly' ? 'selected' : ''}>Amazon Polly (bring your own AWS key)</option>
+      </select>
+    </div>
     <div class="field-row">
       <div class="field"><label>Speech rate</label><input type="range" id="pf-ttsRate" min="0.5" max="2" step="0.1" value="${p.ttsRate}"></div>
       <div class="field"><label>Volume</label><input type="range" id="pf-ttsVolume" min="0" max="1" step="0.05" value="${p.ttsVolume}"></div>
     </div>
-    <div class="field">
-      <label>Voice</label>
-      <select id="pf-ttsVoice"></select>
+    <div id="pf-browserVoiceFields">
+      <div class="field">
+        <label>Voice</label>
+        <select id="pf-ttsVoice"></select>
+      </div>
+    </div>
+    <div id="pf-pollyFields">
+      <div class="field-row">
+        <div class="field"><label>AWS access key ID</label><input type="text" id="pf-pollyAccessKeyId" value="${escapeHtml(p.pollyAccessKeyId)}" autocomplete="off" spellcheck="false"></div>
+        <div class="field"><label>AWS secret access key</label><input type="password" id="pf-pollySecretAccessKey" value="${escapeHtml(p.pollySecretAccessKey)}" autocomplete="off" spellcheck="false"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>AWS region</label><input type="text" id="pf-pollyRegion" value="${escapeHtml(p.pollyRegion)}" list="pf-pollyRegionSuggestions" placeholder="us-east-1">
+          <datalist id="pf-pollyRegionSuggestions">
+            <option value="us-east-1"><option value="us-west-2"><option value="eu-west-1"><option value="eu-central-1"><option value="ap-southeast-2">
+          </datalist>
+        </div>
+        <div class="field"><label>Engine</label>
+          <select id="pf-pollyEngine">
+            <option value="neural" ${p.pollyEngine !== 'standard' ? 'selected' : ''}>Neural (higher quality)</option>
+            <option value="standard" ${p.pollyEngine === 'standard' ? 'selected' : ''}>Standard (wider region support)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Polly voice ID</label>
+        <input type="text" id="pf-pollyVoiceId" value="${escapeHtml(p.pollyVoiceId)}" list="pf-pollyVoiceSuggestions" placeholder="Joanna">
+        <datalist id="pf-pollyVoiceSuggestions">
+          ${POLLY_VOICE_SUGGESTIONS.map((v) => `<option value="${v}">`).join('')}
+        </datalist>
+      </div>
+      <div class="hint-warn"><strong>Your AWS keys get embedded in plain text inside the exported scene.html file</strong> (this app has no backend to keep them server-side) — never share, upload, or commit that project's baked output folder. Create a dedicated IAM user scoped to only <code>polly:SynthesizeSpeech</code>, not your root/admin AWS credentials.</div>
     </div>
     <div class="field">
       <label><input type="checkbox" id="pf-filterCommands" ${p.filterCommands ? 'checked' : ''}> Skip messages starting with "!"</label>
@@ -1621,19 +1659,39 @@ function renderChatOverlayProperties(item, body) {
   populateVoiceOptions();
   if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = populateVoiceOptions;
 
+  const providerSelect = document.getElementById('pf-ttsProvider');
+  const browserFieldsEl = document.getElementById('pf-browserVoiceFields');
+  const pollyFieldsEl = document.getElementById('pf-pollyFields');
+  function updateProviderFieldVisibility() {
+    const isPolly = providerSelect.value === 'polly';
+    browserFieldsEl.style.display = isPolly ? 'none' : '';
+    pollyFieldsEl.style.display = isPolly ? '' : 'none';
+  }
+  updateProviderFieldVisibility();
+  providerSelect.addEventListener('change', updateProviderFieldVisibility);
+
   const applyGeneral = () => {
     p.ttsEnabled = document.getElementById('pf-ttsEnabled').checked;
+    p.ttsProvider = providerSelect.value;
     p.ttsRate = parseFloat(document.getElementById('pf-ttsRate').value) || 1;
     p.ttsVolume = parseFloat(document.getElementById('pf-ttsVolume').value);
     if (Number.isNaN(p.ttsVolume)) p.ttsVolume = 1;
     p.ttsVoiceName = voiceSelect.value;
+    p.pollyAccessKeyId = document.getElementById('pf-pollyAccessKeyId').value.trim();
+    p.pollySecretAccessKey = document.getElementById('pf-pollySecretAccessKey').value.trim();
+    p.pollyRegion = document.getElementById('pf-pollyRegion').value.trim() || 'us-east-1';
+    p.pollyVoiceId = document.getElementById('pf-pollyVoiceId').value.trim() || 'Joanna';
+    p.pollyEngine = document.getElementById('pf-pollyEngine').value;
     p.filterCommands = document.getElementById('pf-filterCommands').checked;
     p.filterEmoteOnly = document.getElementById('pf-filterEmoteOnly').checked;
     p.maxVisibleMessages = parseInt(document.getElementById('pf-maxVisibleMessages').value, 10) || 3;
     p.messageDisplayMs = Math.round((parseFloat(document.getElementById('pf-messageDisplaySeconds').value) || 6) * 1000);
   };
-  ['pf-ttsEnabled', 'pf-ttsRate', 'pf-ttsVolume', 'pf-ttsVoice', 'pf-filterCommands', 'pf-filterEmoteOnly', 'pf-maxVisibleMessages', 'pf-messageDisplaySeconds']
-    .forEach((id) => document.getElementById(id).addEventListener('change', applyGeneral));
+  [
+    'pf-ttsEnabled', 'pf-ttsProvider', 'pf-ttsRate', 'pf-ttsVolume', 'pf-ttsVoice',
+    'pf-pollyAccessKeyId', 'pf-pollySecretAccessKey', 'pf-pollyRegion', 'pf-pollyVoiceId', 'pf-pollyEngine',
+    'pf-filterCommands', 'pf-filterEmoteOnly', 'pf-maxVisibleMessages', 'pf-messageDisplaySeconds',
+  ].forEach((id) => document.getElementById(id).addEventListener('change', applyGeneral));
 }
 
 function renderCountdownTimerProperties(item, body) {

@@ -217,6 +217,22 @@ release.
   below (single most-voted item across all four boards) — the technical
   blocker hasn't moved, but the repeated demand signal is worth a real
   conversation with Harvey rather than staying silently deferred forever.
+  **Sharper pain point from Harvey directly, 2026-08-10 night**: this
+  isn't just "TikTok support would be nice" — his actual, current problem
+  is that TikTok's own live chat window is unreliable for streaming off
+  of: messages/TTS inconsistently fail to display or speak at all, AND
+  TikTok's chat feed interleaves join/leave events with real chat messages
+  in the same stream, so a viewer's message can get buried and missed
+  before they leave. This changes the shape of the eventual feature, not
+  just its priority — even once a TikTok connector exists, it needs
+  explicit join/leave-event filtering (a first for this app; Twitch/Kick's
+  connectors only ever see real chat messages, no membership-event noise
+  to filter), not just "connect and show everything." Still blocked on
+  the same technical wall as before (needs a signing-service key this
+  app's no-backend architecture doesn't have a clean answer for) — worth
+  a real feasibility re-check specifically for the join/leave-filtering
+  requirement once that wall is addressed, not assumed solved by copying
+  the Twitch/Kick connector pattern as-is.
 
 ## Outside sources scouted for ideas (2026-08-10) — not scoped, not built
 
@@ -566,17 +582,27 @@ for their usefulness and what good they do for users."**
     characters (SpongeBob, Patrick Star) carry real right-of-publicity
     and IP exposure if reproduced by name/likeness — flagging this now,
     before any build time goes toward chasing them, not after.
-  **Net read**: the free-and-legitimately-buildable win here is what's
-  already shipped — browser-native `speechSynthesis` (OS voices, zero
-  cost, zero account, forever) — possibly with a picker UX polish pass
-  (search box, per-voice Test button, matching the SE/Tikfinity list
-  feel Harvey pointed at). A real *quality* upgrade to get the literal
-  Polly names/voices would mean a bring-your-own-AWS-key Amazon Polly
-  connector, opt-in, mirroring the already-decided YouTube
-  bring-your-own-key pattern for Chat + TTS Overlay — not started, real
-  scope (AWS SDK calls, credential storage, needs Harvey's live AWS
-  account to verify audio output). The character/novelty voice catalog
-  is a pass, not a build target, for the legal reasons above. Remember
+  **Net read, and now built as v1.6.0**: Harvey chose to build the Polly
+  connector immediately rather than settle for a picker-only polish pass.
+  Shipped: an opt-in "Voice source: Free (browser) / Amazon Polly (bring
+  your own AWS key)" toggle on the Chat + TTS Overlay item. Polly requests
+  are signed client-side with real AWS Signature Version 4 (`polly-tts.js`
+  — pure canonical-request/string-to-sign builders plus SHA-256/HMAC-SHA256
+  primitives via the Web Crypto API, verified against known SHA-256 and
+  RFC 4231 HMAC-SHA256 test vectors, cross-checked against Node's
+  independent `crypto.createHmac` too), no AWS SDK needed so the baked
+  overlay stays import-free. `chat-tts-engine.js`'s baked script carries a
+  literal copy of the same Web Crypto calls (not a re-implementation in a
+  different API, unlike the JSON-parser duplicates elsewhere in this app).
+  The properties panel shows an explicit, visually-flagged security note
+  (`.hint-warn`, amber) since AWS keys end up embedded in plain text inside
+  the exported `scene.html` — recommends an IAM user scoped to only
+  `polly:SynthesizeSpeech`, never root/admin keys. The character/novelty
+  voice catalog remains a pass, not a build target, for the legal reasons
+  above. **Same verification caveat as Twitch/Kick**: the signing math is
+  tested and structurally sound, but has not been confirmed against a real
+  AWS account — needs Harvey's own key to verify actual audio comes back.
+  Remember
   the rebrand rule for anything that does move forward.
 - **`CameraDetection` — Harvey's own theory of what it does**: he thinks
   it's meant to alert if the camera/audio/game capture stops working —

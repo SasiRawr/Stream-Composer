@@ -4,6 +4,21 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.6.0 — 2026-08-10 (pre-release, pending verification)
+
+### Added
+- **Chat + TTS Overlay: Amazon Polly voice option** — an opt-in, bring-your-
+  own-AWS-key alternative to the default free browser/OS voice. Gets the
+  exact named Polly voices (Joanna, Matthew, Ivy, Kendra, etc.) that
+  StreamElements' free TTS panel uses under the hood — same voices,
+  sourced directly from AWS instead of a third party. Requests are signed
+  client-side with AWS Signature Version 4, built from scratch (no AWS
+  SDK) so the baked overlay stays import-free. **Security note**: because
+  this app has no backend, your AWS keys are embedded in plain text inside
+  the exported scene.html — the properties panel shows this warning
+  directly and recommends creating an IAM user scoped to only
+  `polly:SynthesizeSpeech`, not root/admin credentials.
+
 ## v1.5.0 — 2026-08-10 (pre-release, pending verification)
 
 ### Added

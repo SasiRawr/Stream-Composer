@@ -95,6 +95,31 @@ const blankChannelScript = buildChatOverlayScript('chat-item4-3', {
 });
 assert(!blankChannelScript.includes('connectTwitch("'), 'a platform enabled with only whitespace as the channel name is treated as unconfigured, not connected');
 
+// ---- Polly provider: opt-in bring-your-own-AWS-key TTS path ----
+const pollyScript = buildChatOverlayScript('chat-item6-5', {
+  ...baseProps,
+  ttsProvider: 'polly',
+  pollyAccessKeyId: 'AKIDEXAMPLE',
+  pollySecretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+  pollyRegion: 'us-east-1',
+  pollyVoiceId: 'Matthew',
+  pollyEngine: 'neural',
+});
+assert(pollyScript.includes('TTS_PROVIDER = "polly"'), 'the configured TTS provider is baked into the output');
+assert(pollyScript.includes('POLLY_ACCESS_KEY_ID = "AKIDEXAMPLE"'), 'the Polly access key id is baked into the output');
+assert(pollyScript.includes('POLLY_VOICE_ID = "Matthew"'), 'the Polly voice id is baked into the output');
+assert(pollyScript.includes('speakNextPolly'), 'the Polly speak path is present when Polly is the configured provider');
+assert(pollyScript.includes('AWS4-HMAC-SHA256'), 'the SigV4 signing algorithm identifier is present');
+assert(pollyScript.includes('POLLY_REGION = "us-east-1"'), 'the configured Polly region is baked into the output (host is built from it at runtime)');
+assert(pollyScript.includes("'polly.' + region + '.amazonaws.com'"), 'the Polly endpoint host is assembled from the region at runtime, not hardcoded to one region');
+let pollySyntaxError = null;
+try { new Function(pollyScript); } catch (err) { pollySyntaxError = err; }
+assert(pollySyntaxError === null, `Polly-provider script is syntactically valid JS (got: ${pollySyntaxError && pollySyntaxError.message})`);
+
+// ---- Default (no ttsProvider set) falls back to the free browser voice, not Polly ----
+const defaultProviderScript = buildChatOverlayScript('chat-item7-6', baseProps);
+assert(defaultProviderScript.includes('TTS_PROVIDER = "browser"'), 'an unset ttsProvider defaults to the free browser voice, not Polly');
+
 // ---- Distinct instances don't leak each other's ids ----
 const scriptA = buildChatOverlayScript('chat-A', baseProps);
 const scriptB = buildChatOverlayScript('chat-B', baseProps);
