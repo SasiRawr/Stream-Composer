@@ -11,8 +11,8 @@
 // not Tauri invoke() calls. Same "one instance per item, scoped by
 // instanceId" discipline as popup-slide-engine.js.
 //
-// Only Twitch and Kick are wired up (see ROADMAP.md/the v1.2.0 plan for why
-// YouTube/TikTok/Trovo/X aren't here yet — YouTube specifically needs a
+// Twitch, Kick, and TikTok are wired up (see ROADMAP.md/the v1.2.0 plan for
+// why YouTube/Trovo/X aren't here — YouTube specifically needs a
 // bring-your-own-API-key flow, not a shared embedded key, per Harvey's
 // explicit call to avoid a shared-quota-abuse risk).
 //
@@ -29,17 +29,36 @@
 //   I could confirm against). KICK_PUSHER_APP_KEY below is a PLACEHOLDER,
 //   not a verified value — see its own comment for how to fill in the
 //   real one. Kick chat will not work until that's done.
-// - Neither connector has been tested against a real live channel — that
-//   needs Harvey, same as every visual/live-behavior feature in this app.
+// - TikTok connects directly to Euler Stream (a third-party signing/relay
+//   service — TikTok's own connection needs request-signing no client-side
+//   code can compute) via a bring-your-own Euler API key, confirmed CORS-
+//   open so no backend of ours is involved. The CONNECTION mechanics
+//   (wss://ws.eulerstream.com?uniqueId=...&apiKey=...) are read directly
+//   from Euler's own current docs. The MESSAGE SHAPE is the least-verified
+//   part of this whole file: the inner field names (comment/user/action)
+//   are confirmed from Euler's published SDK types, but whether messages
+//   arrive wrapped in an envelope or sent directly could not be confirmed
+//   without a live API key — see parseTikTokChatEvent's own comment.
+//   TikTok is also known to fingerprint/ban automated-looking traffic more
+//   aggressively than Twitch tolerates — a real risk to the streamer's own
+//   account, not just a technical caveat.
+// - None of these connectors has been tested against a real live channel —
+//   that needs Harvey, same as every visual/live-behavior feature in this
+//   app.
 // ============================================================================
 
 import { platformIconSvg } from './popup-slide-icons.js';
 
 export function buildChatOverlayScript(instanceId, props) {
-  const enabledPlatforms = (props.platforms || []).filter((p) => p.enabled && p.channelName && p.channelName.trim());
+  const enabledPlatforms = (props.platforms || []).filter((p) => {
+    if (!p.enabled || !p.channelName || !p.channelName.trim()) return false;
+    if (p.key === 'tiktok') return !!(p.apiKey && p.apiKey.trim());
+    return true;
+  });
   const iconSvgByPlatform = {
     twitch: platformIconSvg('twitch'),
     kick: platformIconSvg('kick'),
+    tiktok: platformIconSvg('tiktok'),
   };
 
   return `
@@ -115,6 +134,57 @@ export function buildChatOverlayScript(instanceId, props) {
     try { inner = JSON.parse(outer.data); } catch (e) { return null; }
     if (!inner || inner.type !== 'message' || !inner.sender || typeof inner.content !== 'string') return null;
     return { username: inner.sender.username || 'unknown', message: inner.content };
+  }
+
+  // See this file's header + chat-message-parsing.js's own comment: the
+  // comment/user/action field names are confirmed, the outer envelope shape
+  // is not - handles both "sent directly" and "wrapped" shapes defensively.
+  function unwrapTikTokEnvelope(parsed) {
+    if (parsed && typeof parsed === 'object') {
+      if (typeof parsed.comment === 'string' || parsed.action !== undefined) return parsed;
+      if (parsed.data && typeof parsed.data === 'object') return parsed.data;
+      if (parsed.payload && typeof parsed.payload === 'object') return parsed.payload;
+    }
+    return parsed;
+  }
+  function parseTikTokChatEvent(rawMessage) {
+    if (!rawMessage) return null;
+    let parsed;
+    try { parsed = JSON.parse(rawMessage); } catch (e) { return null; }
+    const evt = unwrapTikTokEnvelope(parsed);
+    if (!evt || typeof evt.comment !== 'string' || !evt.comment.trim()) return null;
+    const username = (evt.user && (evt.user.nickname || evt.user.uniqueId)) || 'unknown';
+    return { username: username, message: evt.comment };
+  }
+  function isTikTokMemberEvent(rawMessage) {
+    if (!rawMessage) return false;
+    let parsed;
+    try { parsed = JSON.parse(rawMessage); } catch (e) { return false; }
+    const evt = unwrapTikTokEnvelope(parsed);
+    return !!(evt && evt.action !== undefined && typeof evt.comment !== 'string');
+  }
+
+  // ---- Join tone: a short synthesized beep instead of TTS reading "X
+  // joined" aloud (Harvey's explicit ask). No "leave" tone - TikTok's event
+  // stream has no documented leave/left action value, so there's nothing to
+  // trigger one from; building a fake trigger would be worse than not
+  // having the feature. ----
+  let audioCtx = null;
+  function playJoinTone() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+      osc.frequency.linearRampToValueAtTime(660, audioCtx.currentTime + 0.15);
+      gain.gain.setValueAtTime(TTS_VOLUME * 0.2, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.18);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.18);
+    } catch (e) {}
   }
 
   // ---- TTS ----
@@ -333,9 +403,29 @@ export function buildChatOverlayScript(instanceId, props) {
     }
   }
 
+  // ---- TikTok: direct connection to Euler Stream (bring-your-own key,
+  // no backend/relay of ours involved - CORS confirmed open) ----
+  function connectTikTok(uniqueId, apiKey) {
+    let ws;
+    try {
+      ws = new WebSocket('wss://ws.eulerstream.com?uniqueId=' + encodeURIComponent(uniqueId) + '&apiKey=' + encodeURIComponent(apiKey));
+    } catch (e) {
+      return;
+    }
+    ws.onmessage = function (event) {
+      const raw = event.data;
+      if (isTikTokMemberEvent(raw)) { playJoinTone(); return; }
+      const parsed = parseTikTokChatEvent(raw);
+      if (parsed) handleIncomingMessage('tiktok', parsed.username, parsed.message);
+    };
+    ws.onclose = function () { setTimeout(function () { connectTikTok(uniqueId, apiKey); }, 5000); };
+    ws.onerror = function () {};
+  }
+
   ${enabledPlatforms.map((p) => {
     if (p.key === 'twitch') return `connectTwitch(${JSON.stringify(p.channelName.trim())});`;
     if (p.key === 'kick') return `connectKick(${JSON.stringify(p.channelName.trim())});`;
+    if (p.key === 'tiktok') return `connectTikTok(${JSON.stringify(p.channelName.trim())}, ${JSON.stringify(p.apiKey.trim())});`;
     return '';
   }).filter(Boolean).join('\n  ')}
 })();`;

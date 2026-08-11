@@ -432,6 +432,71 @@ thin OS voices, but isn't independently verified as Polly-neural-tier —
 frame it as "a much better free tier," not "replaces Polly." Not started
 — a real candidate for a third TTS provider option, worth prototyping.
 
+### Piper re-examined, and the "Justin" voice question (2026-08-11)
+
+Harvey pushed back on ruling Piper out outright: "since we arent hiding
+anything really, its all open and on github for the source code, i think
+we fall under the piper GPL license, possibly." Worth a real answer
+rather than either just overriding him or just agreeing.
+
+**His specific reasoning isn't quite the legal test, but his instinct to
+not write Piper off was right.** Being open-source ourselves doesn't
+change anything — GPL-3.0 cares about *how a GPL binary gets combined
+into a distributed product*, not whether the combining project is also
+open. The actual test is the FSF's own "mere aggregation" distinction:
+- **Linking Piper's code into Stream Composer's own binary** → GPL-3.0
+  would apply to Stream Composer's code too. Not viable under this
+  project's license.
+- **Bundling Piper as a separate executable, launched via subprocess**
+  (the same shape as a Tauri sidecar) → this is "mere aggregation," not
+  a combined work. Stream Composer's own code stays under whatever
+  license we pick, untouched.
+- **The catch**: the Piper *binary itself* is still GPL-3.0, and
+  distributing it — including inside our installer — carries GPL's
+  distribution obligations for that binary specifically (source
+  availability, license text included, etc.). That's a real compliance
+  step, not a blocker, but not "free to just bundle" either.
+- **Separate catch, easy to miss**: the code license and the voice
+  *model* license aren't the same thing. Some Piper voice models are
+  labeled CC-BY but were trained on data with murkier provenance —
+  each voice we'd actually want to ship needs its own license check,
+  not an assumption that "Piper is fine so every Piper voice is fine."
+
+**Net effect on the Kokoro-vs-Piper call**: Piper stays on the table as
+a subprocess-sidecar candidate, architecturally identical to how
+Kokoro would be bundled — it's not dead. But it adds real compliance
+work (GPL notice/source-availability for the bundled binary,
+per-voice-model license verification) that Kokoro's clean Apache-2.0
+model doesn't need. Not a reason to drop Piper, but a reason Kokoro is
+still the lower-friction first prototype — task #36 now covers both,
+Kokoro first.
+
+**Separate, unrelated discovery made while checking this**: the
+`Stream-Composer` GitHub repo currently has **no LICENSE file at all**
+(confirmed via a direct GitHub API check, 404). That means it's
+technically "all rights reserved" by default right now, regardless of
+being publicly visible — this has nothing to do with the Piper
+question specifically, but it's the thing that makes "what license are
+we actually under" impossible to answer precisely today. **This needs
+a decision from Harvey** (MIT/Apache-2.0/proprietary/something else) —
+flagging it rather than picking one myself since it's a business call,
+not a technical one.
+
+**On "Justin"**: Harvey named the specific voice he uses on
+StreamElements and asked if it, specifically, could run locally
+without a key/relay. **"Justin" is an actual Amazon Polly voice name**
+(en-US, standard engine only — no neural variant exists for it) —
+StreamElements' TTS voice list is built on top of Polly for most of its
+catalog, and the naming lines up exactly. That means Harvey's favorite
+voice is very likely **already available today** through the Chat + TTS
+Overlay's existing Polly connector (shipped in v1.6.0) once the relay
+is live — no Piper/Kokoro work needed for this specific voice. It would
+still require the relay (Polly is a cloud API, not a local model), but
+it sidesteps the "which local engine has a voice I actually like"
+question entirely for this one case. Worth Harvey just trying voiceId
+`Justin`, engine `standard`, once the relay's DNS record and AWS key are
+in (task #34).
+
 ### PNGTuber/VTuber — PNGTuber is small and near-term, full VTuber is a
 ### separate, much bigger project
 

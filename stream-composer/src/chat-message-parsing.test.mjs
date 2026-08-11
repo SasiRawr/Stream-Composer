@@ -6,7 +6,7 @@
 // Run with: node src/chat-message-parsing.test.mjs
 // ============================================================================
 
-import { parseTwitchIrcMessage, parseKickChatEvent, isEmoteOnlyMessage } from './chat-message-parsing.js';
+import { parseTwitchIrcMessage, parseKickChatEvent, isEmoteOnlyMessage, parseTikTokChatEvent, isTikTokMemberEvent } from './chat-message-parsing.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -92,6 +92,47 @@ assert(parseKickChatEvent('not even json') === null, 'malformed outer JSON retur
 assert(parseKickChatEvent(JSON.stringify({ event: 'App\\Events\\ChatMessageEvent', data: 'not json' })) === null, 'malformed inner JSON returns null, does not throw');
 assert(parseKickChatEvent('') === null, 'an empty string returns null');
 assert(parseKickChatEvent(null) === null, 'null input returns null, does not throw');
+
+// ---- parseTikTokChatEvent / isTikTokMemberEvent ----
+// Field names (comment/user/action) are confirmed from Euler Stream's own
+// published SDK types; the outer envelope shape is NOT confirmed (no live
+// key to test against) - these fixtures cover both "sent directly" and
+// "wrapped in a data/payload envelope" shapes defensively. See
+// chat-message-parsing.js's header comment for the full caveat.
+
+const tiktokDirectChat = JSON.stringify({
+  common: { method: 'WebcastChatMessage' },
+  user: { nickname: 'tiktokuser', uniqueId: 'tiktokuser_id' },
+  comment: 'hey everyone',
+});
+const tiktokDirectParsed = parseTikTokChatEvent(tiktokDirectChat);
+assert(tiktokDirectParsed !== null, 'a TikTok chat event sent directly (no envelope) parses successfully');
+assert(tiktokDirectParsed.username === 'tiktokuser', `the nickname is used as the username (got ${tiktokDirectParsed && tiktokDirectParsed.username})`);
+assert(tiktokDirectParsed.message === 'hey everyone', `the comment text is extracted exactly (got "${tiktokDirectParsed && tiktokDirectParsed.message}")`);
+
+const tiktokWrappedChat = JSON.stringify({
+  event: 'chat',
+  data: { user: { nickname: 'wrappeduser' }, comment: 'wrapped message' },
+});
+const tiktokWrappedParsed = parseTikTokChatEvent(tiktokWrappedChat);
+assert(tiktokWrappedParsed !== null, 'a TikTok chat event wrapped in a data envelope also parses');
+assert(tiktokWrappedParsed.username === 'wrappeduser', `the wrapped event's username is extracted (got ${tiktokWrappedParsed && tiktokWrappedParsed.username})`);
+
+const tiktokNoNickname = JSON.stringify({ user: { uniqueId: 'fallback_id' }, comment: 'no nickname here' });
+const tiktokNoNicknameParsed = parseTikTokChatEvent(tiktokNoNickname);
+assert(tiktokNoNicknameParsed !== null && tiktokNoNicknameParsed.username === 'fallback_id', `falls back to uniqueId when nickname is absent (got ${tiktokNoNicknameParsed && tiktokNoNicknameParsed.username})`);
+
+const tiktokMemberEvent = JSON.stringify({ user: { nickname: 'joiner' }, action: 1 });
+assert(parseTikTokChatEvent(tiktokMemberEvent) === null, 'a member/join event (no comment field) is not parsed as a chat message');
+assert(isTikTokMemberEvent(tiktokMemberEvent) === true, 'a member/join event is correctly identified as one');
+assert(isTikTokMemberEvent(tiktokDirectChat) === false, 'a real chat message is not misidentified as a member event');
+
+assert(parseTikTokChatEvent('') === null, 'an empty string returns null');
+assert(parseTikTokChatEvent(null) === null, 'null input returns null, does not throw');
+assert(parseTikTokChatEvent('not json at all') === null, 'malformed JSON returns null, does not throw');
+assert(parseTikTokChatEvent(JSON.stringify({ comment: '   ' })) === null, 'a whitespace-only comment is treated as not a real message');
+assert(isTikTokMemberEvent('not json') === false, 'malformed JSON for isTikTokMemberEvent returns false, does not throw');
+assert(isTikTokMemberEvent(null) === false, 'null input for isTikTokMemberEvent returns false, does not throw');
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -18,6 +18,12 @@
 export const CHAT_PLATFORMS = [
   { key: 'twitch', label: 'Twitch', adult: false },
   { key: 'kick', label: 'Kick', adult: false },
+  // TikTok needs a bring-your-own Euler Stream API key on top of the usual
+  // channel name - the signing service TikTok's own connection requires.
+  // See chat-tts-engine.js's header for why (no client-computable signing,
+  // and no backend of ours involved - CORS on Euler's API is confirmed
+  // open, so this connects directly from the baked overlay).
+  { key: 'tiktok', label: 'TikTok', adult: false, needsApiKey: true },
 ];
 
 export function visibleChatPlatforms(showAdultPlatforms) {

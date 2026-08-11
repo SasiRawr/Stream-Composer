@@ -120,6 +120,31 @@ assert(pollySyntaxError === null, `Polly-provider script is syntactically valid 
 const defaultProviderScript = buildChatOverlayScript('chat-item7-6', baseProps);
 assert(defaultProviderScript.includes('TTS_PROVIDER = "browser"'), 'an unset ttsProvider defaults to the free browser voice, not Polly');
 
+// ---- TikTok: bring-your-own Euler API key, connects directly ----
+const tiktokScript = buildChatOverlayScript('chat-item8-7', {
+  ...baseProps,
+  platforms: [
+    { key: 'twitch', enabled: false, channelName: '' },
+    { key: 'kick', enabled: false, channelName: '' },
+    { key: 'tiktok', enabled: true, channelName: 'someTikTokUser', apiKey: 'euler-key-123' },
+  ],
+});
+assert(tiktokScript.includes('connectTikTok("someTikTokUser", "euler-key-123")'), 'TikTok enabled with a channel name and API key gets a connect call with both');
+assert(tiktokScript.includes('ws.eulerstream.com'), 'connects directly to Euler Stream, no relay of ours involved');
+assert(tiktokScript.includes('playJoinTone'), 'the join-tone player is present');
+assert(tiktokScript.includes('isTikTokMemberEvent'), 'the member-event detector is inlined');
+assert(tiktokScript.includes('parseTikTokChatEvent'), 'the TikTok message parser is inlined');
+let tiktokSyntaxError = null;
+try { new Function(tiktokScript); } catch (err) { tiktokSyntaxError = err; }
+assert(tiktokSyntaxError === null, `TikTok-enabled script is syntactically valid JS (got: ${tiktokSyntaxError && tiktokSyntaxError.message})`);
+
+// ---- TikTok enabled with a channel name but NO API key is NOT connected ----
+const tiktokNoKeyScript = buildChatOverlayScript('chat-item9-8', {
+  ...baseProps,
+  platforms: [{ key: 'tiktok', enabled: true, channelName: 'someTikTokUser', apiKey: '' }],
+});
+assert(!tiktokNoKeyScript.includes('connectTikTok("someTikTokUser"'), 'TikTok enabled without an API key does not get a connect call, even with a channel name set');
+
 // ---- Distinct instances don't leak each other's ids ----
 const scriptA = buildChatOverlayScript('chat-A', baseProps);
 const scriptB = buildChatOverlayScript('chat-B', baseProps);

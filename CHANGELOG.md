@@ -4,6 +4,25 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.7.0 — 2026-08-11 (pre-release, pending verification)
+
+### Added
+- **Chat + TTS Overlay: TikTok Live chat support** — a third platform
+  alongside Twitch and Kick. Connects directly to Euler Stream (a
+  third-party signing service TikTok's own connection requires) with a
+  bring-your-own API key — no backend/relay of ours involved, confirmed
+  CORS-open. Real chat messages join the same feed/TTS pipeline as
+  Twitch/Kick; join/member events get a short synthesized tone instead
+  of being read aloud or shown as text (no leave-event tone — TikTok's
+  event stream doesn't appear to expose one). Properties panel carries an
+  explicit warning that TikTok is known to fingerprint/restrict
+  automated-looking connections more aggressively than Twitch tolerates.
+  **Verification note**: the connection mechanics are read directly from
+  Euler's current docs; the exact message envelope shape could not be
+  confirmed without a live API key and is handled defensively — this is
+  the least-verified connector shipped so far, more than usual caution
+  needed testing it.
+
 ## v1.6.0 — 2026-08-10 (pre-release, pending verification)
 
 ### Added

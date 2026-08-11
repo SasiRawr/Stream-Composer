@@ -101,3 +101,56 @@ export function parseKickChatEvent(rawPusherMessage) {
     message: inner.content,
   };
 }
+
+// TikTok Live events arrive over a WebSocket relay (Euler Stream —
+// wss://ws.eulerstream.com, connected to directly with a bring-your-own
+// API key as a query param, no signing/relay of our own needed — see
+// chat-tts-engine.js's header). This is the LEAST-verified parser in this
+// file. Confirmed from Euler's own published SDK type definitions
+// (tiktok-live-connector@2.1.0's tiktok-schema.d.ts): a real chat message
+// has a `comment` string field; a join/member event has an `action` field
+// instead (no documented "left the stream" action value was found — TikTok's
+// event stream may simply not expose a leave event at all, which is why
+// there's no leave-side function here). What's NOT confirmed: whether
+// Euler's WebSocket sends these objects directly, or wraps them in an outer
+// envelope (`{ event, data }`-style, the way Kick's Pusher feed does) — no
+// real example message could be found without a live API key. Handles both
+// shapes defensively; needs verification against an actual connection
+// before trusting it the way the Twitch/Kick parsers can be trusted.
+function unwrapPossibleEnvelope(parsed) {
+  if (parsed && typeof parsed === 'object') {
+    if (typeof parsed.comment === 'string' || parsed.action !== undefined) return parsed;
+    if (parsed.data && typeof parsed.data === 'object') return parsed.data;
+    if (parsed.payload && typeof parsed.payload === 'object') return parsed.payload;
+  }
+  return parsed;
+}
+
+export function parseTikTokChatEvent(rawMessage) {
+  if (!rawMessage || typeof rawMessage !== 'string') return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(rawMessage);
+  } catch {
+    return null;
+  }
+  const event = unwrapPossibleEnvelope(parsed);
+  if (!event || typeof event.comment !== 'string' || !event.comment.trim()) return null;
+
+  const username = (event.user && (event.user.nickname || event.user.uniqueId)) || 'unknown';
+  return { username, message: event.comment };
+}
+
+// Returns true for a join/member event (per the confirmed `action` field),
+// so the engine can route it to a join-tone instead of the feed/TTS queue.
+export function isTikTokMemberEvent(rawMessage) {
+  if (!rawMessage || typeof rawMessage !== 'string') return false;
+  let parsed;
+  try {
+    parsed = JSON.parse(rawMessage);
+  } catch {
+    return false;
+  }
+  const event = unwrapPossibleEnvelope(parsed);
+  return !!(event && event.action !== undefined && typeof event.comment !== 'string');
+}

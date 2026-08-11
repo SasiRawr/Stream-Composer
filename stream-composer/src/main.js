@@ -97,7 +97,7 @@ function defaultPropsFor(type) {
   }
   if (type === 'chat-overlay') {
     return {
-      platforms: CHAT_PLATFORMS.map((p) => ({ key: p.key, enabled: false, channelName: '' })),
+      platforms: CHAT_PLATFORMS.map((p) => ({ key: p.key, enabled: false, channelName: '', apiKey: '' })),
       ttsEnabled: true,
       ttsRate: 1,
       ttsVolume: 1,
@@ -1540,9 +1540,16 @@ function renderChatOverlayProperties(item, body) {
     return visibleChatPlatforms(p.showAdultPlatforms).map((platform) => {
       let entry = p.platforms.find((pl) => pl.key === platform.key);
       if (!entry) {
-        entry = { key: platform.key, enabled: false, channelName: '' }; // tolerate a platform added after this project was saved
+        entry = { key: platform.key, enabled: false, channelName: '', apiKey: '' }; // tolerate a platform added after this project was saved
         p.platforms.push(entry);
       }
+      const apiKeyField = platform.needsApiKey ? `
+          <div class="field">
+            <label>${escapeHtml(platform.label)} API key</label>
+            <input type="password" data-platform="${platform.key}" data-field="apiKey" value="${escapeHtml(entry.apiKey || '')}" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="hint-warn">${escapeHtml(platform.label)} requires a signing service (this app has no way to connect to it directly) — this uses Euler Stream, a third-party API with its own free tier (eulerstream.com). ${escapeHtml(platform.label)} is also known to fingerprint and restrict automated-looking connections more aggressively than Twitch tolerates — a real risk to your own account, worth knowing before connecting a live channel.</div>
+      ` : '';
       return `
         <div class="slide-card">
           <div class="slide-card-head"><span>${platform.label.toUpperCase()}</span></div>
@@ -1553,6 +1560,7 @@ function renderChatOverlayProperties(item, body) {
             <label>Channel name</label>
             <input type="text" data-platform="${platform.key}" data-field="channelName" value="${escapeHtml(entry.channelName)}">
           </div>
+          ${apiKeyField}
         </div>
       `;
     }).join('');
