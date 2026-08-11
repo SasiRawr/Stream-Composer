@@ -1,0 +1,27 @@
+[package]
+name = "kokoro-sidecar"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# This is a standalone binary, deliberately NOT a member of src-tauri's
+# Cargo workspace - Tauri's externalBin mechanism just needs a prebuilt
+# .exe copied into src-tauri/binaries/, it doesn't need to be built as
+# part of the main app crate. Build it separately (see README.md in this
+# folder) and copy the release binary over.
+
+[[bin]]
+name = "kokoro-sidecar"
+path = "src/main.rs"
+
+[dependencies]
+kokoro-en = "0.1.5"
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "fs", "io-util", "sync"] }
+axum = "0.8.9"
+tower-http = { version = "0.7.0", features = ["cors"] }
+hound = "3.5.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+
+[profile.release]
+opt-level = 3

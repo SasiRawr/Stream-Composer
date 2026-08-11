@@ -73,6 +73,8 @@ export function buildChatOverlayScript(instanceId, props) {
   const POLLY_REGION = ${JSON.stringify(props.pollyRegion || 'us-east-1')};
   const POLLY_VOICE_ID = ${JSON.stringify(props.pollyVoiceId || 'Joanna')};
   const POLLY_ENGINE = ${JSON.stringify(props.pollyEngine || 'neural')};
+  const KOKORO_VOICE = ${JSON.stringify(props.kokoroVoice || 'af_heart')};
+  const KOKORO_PORT = 5757;
   const FILTER_COMMANDS = ${JSON.stringify(!!props.filterCommands)};
   const FILTER_EMOTE_ONLY = ${JSON.stringify(!!props.filterEmoteOnly)};
   const MAX_VISIBLE = ${JSON.stringify(props.maxVisibleMessages ?? 3)};
@@ -188,11 +190,19 @@ export function buildChatOverlayScript(instanceId, props) {
   }
 
   // ---- TTS ----
+  // Capped so combined multi-chat load (task #41's research: two busy
+  // chats feeding one TTS reader multiplies the message rate) can't build
+  // an ever-growing backlog that reads further and further behind real
+  // chat - once full, the oldest queued message is dropped in favor of
+  // what's actually happening now, same "recency over completeness"
+  // choice a human moderator would make.
+  const TTS_QUEUE_CAP = 6;
   const ttsQueue = [];
   let speaking = false;
 
   function speakNext() {
     if (TTS_PROVIDER === 'polly') { speakNextPolly(); return; }
+    if (TTS_PROVIDER === 'kokoro') { speakNextKokoro(); return; }
     speakNextBrowser();
   }
 
@@ -304,6 +314,45 @@ export function buildChatOverlayScript(instanceId, props) {
     }
   }
 
+  // ---- Kokoro TTS (local, free, no key/relay - task #36) ----
+  // Talks to the kokoro-sidecar process over plain HTTP on localhost,
+  // exactly the same shape as the Polly path above just pointed at
+  // 127.0.0.1 instead of AWS and with no request signing needed. The
+  // sidecar has to already be running (started from the editor app's
+  // properties panel, see main.js) - it's a genuinely separate process
+  // from this baked overlay, not something this script can start itself.
+  let kokoroAudioEl = null;
+  let kokoroWarnedOnce = false;
+  async function speakNextKokoro() {
+    if (speaking || ttsQueue.length === 0) return;
+    speaking = true;
+    const text = ttsQueue.shift();
+    try {
+      const res = await fetch('http://127.0.0.1:' + KOKORO_PORT + '/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text, voice: KOKORO_VOICE }),
+      });
+      if (!res.ok) throw new Error('Kokoro sidecar returned ' + res.status);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      if (!kokoroAudioEl) kokoroAudioEl = new Audio();
+      kokoroAudioEl.src = objectUrl;
+      kokoroAudioEl.volume = TTS_VOLUME;
+      kokoroAudioEl.playbackRate = TTS_RATE;
+      kokoroAudioEl.onended = function () { URL.revokeObjectURL(objectUrl); speaking = false; speakNext(); };
+      kokoroAudioEl.onerror = function () { URL.revokeObjectURL(objectUrl); speaking = false; speakNext(); };
+      await kokoroAudioEl.play();
+    } catch (e) {
+      if (!kokoroWarnedOnce) {
+        kokoroWarnedOnce = true;
+        console.warn('Chat + TTS Overlay: Kokoro selected as the TTS provider but the local voice service isn\\'t reachable on 127.0.0.1:' + KOKORO_PORT + ' - start it from Stream Composer Suite\\'s properties panel before going live.', e);
+      }
+      speaking = false;
+      speakNext();
+    }
+  }
+
   // speechSynthesis.getVoices() is empty until the voiceschanged event
   // fires the first time in most Chromium contexts - just needs to be
   // listened for once, no action required beyond that.
@@ -336,6 +385,7 @@ export function buildChatOverlayScript(instanceId, props) {
     if (FILTER_COMMANDS && message.trim().indexOf('!') === 0) return;
     addMessageToFeed(platformKey, username, message);
     if (TTS_ENABLED) {
+      if (ttsQueue.length >= TTS_QUEUE_CAP) ttsQueue.shift();
       ttsQueue.push(username + ' says ' + message);
       speakNext();
     }

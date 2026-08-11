@@ -471,6 +471,82 @@ model doesn't need. Not a reason to drop Piper, but a reason Kokoro is
 still the lower-friction first prototype — task #36 now covers both,
 Kokoro first.
 
+### Kokoro built and working end-to-end, v1.9.0 (2026-08-11)
+
+Task #36 built for real, not just prototyped on paper. Architecture:
+a new `kokoro-sidecar/` Rust crate (separate from `src-tauri/`, a
+standalone binary) wraps the `kokoro-en` crate (Apache-2.0) behind a
+tiny local HTTP server, bundled into the app via Tauri's `externalBin`
+sidecar mechanism. The BAKED overlay's `chat-tts-engine.js` gets a third
+`kokoro` provider, calling `http://127.0.0.1:5757/synthesize` — the
+exact same shape as the Polly connector calling AWS, just pointed at
+localhost with no request signing needed.
+
+**Real native-toolchain friction hit and fixed** (full detail in
+`kokoro-sidecar/README.md`): `espeak-rs-sys` (a transitive dependency,
+phoneme fallback for out-of-dictionary words) needed LLVM/clang
+(`bindgen`) and CMake (to build `espeak-ng` from source) installed via
+winget, a CMake generator override (`CMAKE_GENERATOR="Visual Studio 17
+2022"` — auto-detection picked a generator name CMake doesn't actually
+recognize on this machine), and a short `CARGO_TARGET_DIR` to dodge
+Windows' 260-character `MAX_PATH` limit (this repo's own path is already
+long enough that CMake's generated temp-file paths blew past it).
+
+**Genuinely verified working, not just "compiles"**: downloaded the real
+92MB quantized ONNX model + two real voice files from Kokoro's
+HuggingFace repo, ran the sidecar standalone, and generated actual
+speech audio from real text over a real HTTP request — a 412KB, valid
+24kHz WAV file, sent to Harvey directly as proof. Worth noting as a real
+resilience finding: on this dev machine, ONNX Runtime tried CUDA
+(unavailable), fell back to DirectML (failed on this specific GPU/model
+combination), fell back to CPU, and succeeded — all without crashing.
+That fallback chain working cleanly is a good sign for how this will
+behave across the range of streamers' actual hardware.
+
+**Model NOT bundled in the installer** — a deliberate size tradeoff: the
+model+voices (~110MB for all 29 English voices) download on first use
+from the properties panel instead, so the ~35 people who never touch
+Kokoro don't carry that weight in every install. The `kokoro-sidecar.exe`
+binary itself (~66MB) IS bundled in every installer regardless, since
+`externalBin` requires it — a real, permanent size increase worth
+knowing about, not hidden.
+
+**Sidecar lifecycle, the one real design decision here**: it's spawned
+DETACHED from the editor app and is NOT killed when Stream Composer
+Suite closes — deliberately, since a streamer's OBS session routinely
+outlives the editor by hours and TTS needs to keep working the whole
+time. This mirrors an operational reality streamers already live with
+(OBS itself has to stay running) rather than inventing a new one. The
+properties panel has explicit Start/Stop controls, not just Start, since
+that also means a stray process can be left running after closing the
+app.
+
+**Honest verification gap, same category as this project's other
+first-native-feature gaps** (v1.0.0's original untested drag/resize
+flow, Kick's placeholder Pusher key): the sidecar binary itself and the
+Rust backend commands are proven — real audio was generated, the
+commands compile clean, the full app builds and bundles correctly — but
+the actual in-app Download → Start → speak-in-OBS click path has not
+been tested, since driving this app's native Tauri window is outside
+what any tool available here can do. Needs Harvey's real test, flagged
+prominently in `Tests/v1.9.0-kokoro-local-tts/WHAT_TO_TEST.md`.
+
+**"Two builds to compare Kokoro vs Polly" delivered as one build**: per
+the earlier simplification, both providers now live in the same Voice
+Source dropdown in the same app — switch between them to compare
+responsiveness/quality directly, no separate installers needed.
+
+**Not built this pass, real next steps if this gets picked up further**:
+Chatterbox Turbo as a fourth provider (Harvey greenlit it same session,
+task tracked separately) — same subprocess-sidecar shape as Kokoro,
+but a fresh integration since it has no existing Rust crate (would need
+a Python subprocess or a from-scratch Rust ONNX wrapper, more work than
+Kokoro's ready-made crate). Also not built: any UI polish beyond a
+functional Download/Start/Stop control block, and no attempt yet to
+reduce the sidecar's own ~66MB baseline installer-size cost (e.g.
+lazy-downloading the sidecar binary itself, not just the model, for
+users who never touch this feature).
+
 **Separate, unrelated discovery made while checking this**: the
 `Stream-Composer` GitHub repo currently has **no LICENSE file at all**
 (confirmed via a direct GitHub API check, 404). That means it's

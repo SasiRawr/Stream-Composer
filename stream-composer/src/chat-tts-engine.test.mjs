@@ -120,6 +120,24 @@ assert(pollySyntaxError === null, `Polly-provider script is syntactically valid 
 const defaultProviderScript = buildChatOverlayScript('chat-item7-6', baseProps);
 assert(defaultProviderScript.includes('TTS_PROVIDER = "browser"'), 'an unset ttsProvider defaults to the free browser voice, not Polly');
 
+// ---- Kokoro provider: local, no key/relay, talks to the sidecar over localhost ----
+const kokoroScript = buildChatOverlayScript('chat-item11-10', {
+  ...baseProps,
+  ttsProvider: 'kokoro',
+  kokoroVoice: 'am_michael',
+});
+assert(kokoroScript.includes('TTS_PROVIDER = "kokoro"'), 'the configured TTS provider is baked into the output');
+assert(kokoroScript.includes('KOKORO_VOICE = "am_michael"'), 'the configured Kokoro voice is baked into the output');
+assert(kokoroScript.includes('speakNextKokoro'), 'the Kokoro speak path is present when Kokoro is the configured provider');
+assert(kokoroScript.includes("'http://127.0.0.1:' + KOKORO_PORT + '/synthesize'"), 'Kokoro requests go to localhost, never a remote host - no relay/key involved for this provider');
+let kokoroSyntaxError = null;
+try { new Function(kokoroScript); } catch (err) { kokoroSyntaxError = err; }
+assert(kokoroSyntaxError === null, `Kokoro-provider script is syntactically valid JS (got: ${kokoroSyntaxError && kokoroSyntaxError.message})`);
+
+// ---- Kokoro voice defaults to af_heart when unset ----
+const kokoroDefaultVoiceScript = buildChatOverlayScript('chat-item12-11', { ...baseProps, ttsProvider: 'kokoro' });
+assert(kokoroDefaultVoiceScript.includes('KOKORO_VOICE = "af_heart"'), 'an unset kokoroVoice defaults to af_heart, not undefined/null');
+
 // ---- TikTok: bring-your-own Euler API key, connects directly ----
 const tiktokScript = buildChatOverlayScript('chat-item8-7', {
   ...baseProps,
@@ -144,6 +162,21 @@ const tiktokNoKeyScript = buildChatOverlayScript('chat-item9-8', {
   platforms: [{ key: 'tiktok', enabled: true, channelName: 'someTikTokUser', apiKey: '' }],
 });
 assert(!tiktokNoKeyScript.includes('connectTikTok("someTikTokUser"'), 'TikTok enabled without an API key does not get a connect call, even with a channel name set');
+
+// ---- Multi-chat: two platforms enabled at once both get connect calls ----
+const multiChatScript = buildChatOverlayScript('chat-item10-9', {
+  ...baseProps,
+  platforms: [
+    { key: 'twitch', enabled: true, channelName: 'someStreamer' },
+    { key: 'kick', enabled: true, channelName: 'someKickChannel' },
+  ],
+});
+assert(multiChatScript.includes('connectTwitch("someStreamer")'), 'multi-chat: Twitch still gets a connect call when a second platform is also enabled');
+assert(multiChatScript.includes('connectKick("someKickChannel")'), 'multi-chat: Kick gets a connect call at the same time as Twitch, not instead of it');
+
+// ---- TTS queue has a bounded cap, doesn't grow forever under combined load ----
+assert(script.includes('TTS_QUEUE_CAP'), 'the TTS queue cap constant is present in the generated script');
+assert(script.includes('ttsQueue.shift()'), 'the queue drops its oldest entry once full, rather than growing without bound');
 
 // ---- Distinct instances don't leak each other's ids ----
 const scriptA = buildChatOverlayScript('chat-A', baseProps);

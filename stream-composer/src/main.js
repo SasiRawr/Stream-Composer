@@ -37,6 +37,43 @@ import { defaultPollyProps, POLLY_VOICE_SUGGESTIONS } from './polly-tts.js';
 
 const { invoke } = window.__TAURI__.core;
 
+// English-only voice list for the Kokoro local TTS provider - must match
+// KOKORO_VOICES in src-tauri/src/lib.rs exactly (same 29 values), since
+// that's what actually gets downloaded to disk. Human-readable labels
+// here are just for this picker; the baked script only ever stores/uses
+// the plain voice key (e.g. "af_heart").
+const KOKORO_VOICE_OPTIONS = [
+  { value: 'af_heart', label: 'Heart (American Female)' },
+  { value: 'af_alloy', label: 'Alloy (American Female)' },
+  { value: 'af_aoede', label: 'Aoede (American Female)' },
+  { value: 'af_bella', label: 'Bella (American Female)' },
+  { value: 'af_jessica', label: 'Jessica (American Female)' },
+  { value: 'af_kore', label: 'Kore (American Female)' },
+  { value: 'af_nicole', label: 'Nicole (American Female)' },
+  { value: 'af_nova', label: 'Nova (American Female)' },
+  { value: 'af_river', label: 'River (American Female)' },
+  { value: 'af_sarah', label: 'Sarah (American Female)' },
+  { value: 'af_sky', label: 'Sky (American Female)' },
+  { value: 'af', label: 'Default (American Female)' },
+  { value: 'am_adam', label: 'Adam (American Male)' },
+  { value: 'am_echo', label: 'Echo (American Male)' },
+  { value: 'am_eric', label: 'Eric (American Male)' },
+  { value: 'am_fenrir', label: 'Fenrir (American Male)' },
+  { value: 'am_liam', label: 'Liam (American Male)' },
+  { value: 'am_michael', label: 'Michael (American Male)' },
+  { value: 'am_onyx', label: 'Onyx (American Male)' },
+  { value: 'am_puck', label: 'Puck (American Male)' },
+  { value: 'am_santa', label: 'Santa (American Male)' },
+  { value: 'bf_alice', label: 'Alice (British Female)' },
+  { value: 'bf_emma', label: 'Emma (British Female)' },
+  { value: 'bf_isabella', label: 'Isabella (British Female)' },
+  { value: 'bf_lily', label: 'Lily (British Female)' },
+  { value: 'bm_daniel', label: 'Daniel (British Male)' },
+  { value: 'bm_fable', label: 'Fable (British Male)' },
+  { value: 'bm_george', label: 'George (British Male)' },
+  { value: 'bm_lewis', label: 'Lewis (British Male)' },
+];
+
 // ---- DISPLAY SCALING --------------------------------------------------------
 // A real stream canvas (1920x1080) is bigger than a reasonable editor
 // window, so the on-screen Fabric canvas is shown SMALLER than the real
@@ -105,7 +142,8 @@ function defaultPropsFor(type) {
       ttsRate: 1,
       ttsVolume: 1,
       ttsVoiceName: '', // '' = browser/OS default voice
-      ...defaultPollyProps(), // ttsProvider ('browser'|'polly') + Polly credentials/voice/region/engine
+      ...defaultPollyProps(), // ttsProvider ('browser'|'polly'|'kokoro') + Polly credentials/voice/region/engine
+      kokoroVoice: 'af_heart',
       filterCommands: true,
       filterEmoteOnly: true, // Twitch only for now — Kick's chat feed doesn't expose emote-position metadata
       maxVisibleMessages: 3,
@@ -1655,8 +1693,9 @@ function renderChatOverlayProperties(item, body) {
     <div class="field">
       <label>Voice source</label>
       <select id="pf-ttsProvider">
-        <option value="browser" ${p.ttsProvider !== 'polly' ? 'selected' : ''}>Free (your Windows/browser voices)</option>
+        <option value="browser" ${!p.ttsProvider || p.ttsProvider === 'browser' ? 'selected' : ''}>Free (your Windows/browser voices)</option>
         <option value="polly" ${p.ttsProvider === 'polly' ? 'selected' : ''}>Amazon Polly (bring your own AWS key)</option>
+        <option value="kokoro" ${p.ttsProvider === 'kokoro' ? 'selected' : ''}>Local (Kokoro, free &amp; offline, no key)</option>
       </select>
     </div>
     <div class="field-row">
@@ -1695,6 +1734,24 @@ function renderChatOverlayProperties(item, body) {
         </datalist>
       </div>
       <div class="hint-warn"><strong>Your AWS keys get embedded in plain text inside the exported scene.html file</strong> (this app has no backend to keep them server-side) — never share, upload, or commit that project's baked output folder. Create a dedicated IAM user scoped to only <code>polly:SynthesizeSpeech</code>, not your root/admin AWS credentials.</div>
+    </div>
+    <div id="pf-kokoroFields">
+      <div class="field">
+        <label>Kokoro voice</label>
+        <select id="pf-kokoroVoice">
+          ${KOKORO_VOICE_OPTIONS.map((v) => `<option value="${v.value}" ${p.kokoroVoice === v.value ? 'selected' : ''}>${v.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <div id="pf-kokoroStatus" class="hint">Checking local voice service status…</div>
+        <div class="field-row">
+          <button type="button" id="pf-kokoroDownloadBtn">Download voice model (~110MB, one-time)</button>
+          <button type="button" id="pf-kokoroStartBtn">Start local voice service</button>
+          <button type="button" id="pf-kokoroStopBtn">Stop</button>
+        </div>
+        <div id="pf-kokoroProgress" class="hint" style="display:none;"></div>
+      </div>
+      <div class="hint-warn">The local voice service is a <strong>separate process</strong> from Stream Composer Suite itself — it does NOT close when you close this app, on purpose (so it keeps working while you're live in OBS with the editor closed), and it does NOT start itself automatically. Start it here before going live, and use Stop when you're done streaming if you'd rather not leave it running in the background.</div>
     </div>
     <div class="field">
       <label><input type="checkbox" id="pf-filterCommands" ${p.filterCommands ? 'checked' : ''}> Skip messages starting with "!"</label>
@@ -1735,13 +1792,79 @@ function renderChatOverlayProperties(item, body) {
   const providerSelect = document.getElementById('pf-ttsProvider');
   const browserFieldsEl = document.getElementById('pf-browserVoiceFields');
   const pollyFieldsEl = document.getElementById('pf-pollyFields');
+  const kokoroFieldsEl = document.getElementById('pf-kokoroFields');
   function updateProviderFieldVisibility() {
-    const isPolly = providerSelect.value === 'polly';
-    browserFieldsEl.style.display = isPolly ? 'none' : '';
-    pollyFieldsEl.style.display = isPolly ? '' : 'none';
+    const provider = providerSelect.value;
+    browserFieldsEl.style.display = provider === 'browser' ? '' : 'none';
+    pollyFieldsEl.style.display = provider === 'polly' ? '' : 'none';
+    kokoroFieldsEl.style.display = provider === 'kokoro' ? '' : 'none';
   }
   updateProviderFieldVisibility();
   providerSelect.addEventListener('change', updateProviderFieldVisibility);
+
+  // ---- Kokoro local voice service controls ----
+  // This is the one part of the properties panel that talks to the Rust
+  // backend rather than just editing props - the model download and the
+  // sidecar process both need real filesystem/process access no baked
+  // overlay or editor-frontend-only code could do. See lib.rs's Kokoro
+  // section header comment for the full architecture.
+  const kokoroStatusEl = document.getElementById('pf-kokoroStatus');
+  const kokoroProgressEl = document.getElementById('pf-kokoroProgress');
+  const kokoroDownloadBtn = document.getElementById('pf-kokoroDownloadBtn');
+  const kokoroStartBtn = document.getElementById('pf-kokoroStartBtn');
+  const kokoroStopBtn = document.getElementById('pf-kokoroStopBtn');
+
+  async function refreshKokoroStatus() {
+    try {
+      const hasModel = await invoke('kokoro_model_status');
+      kokoroStatusEl.textContent = hasModel
+        ? 'Voice model downloaded. Click "Start local voice service" before going live.'
+        : 'Voice model not downloaded yet - click Download below (one-time, ~110MB).';
+      kokoroDownloadBtn.disabled = hasModel;
+      kokoroStartBtn.disabled = !hasModel;
+    } catch (e) {
+      kokoroStatusEl.textContent = 'Could not check local voice service status: ' + e;
+    }
+  }
+  refreshKokoroStatus();
+
+  kokoroDownloadBtn.addEventListener('click', async () => {
+    kokoroDownloadBtn.disabled = true;
+    kokoroProgressEl.style.display = '';
+    kokoroProgressEl.textContent = 'Starting download…';
+    const unlisten = await window.__TAURI__.event.listen('kokoro-download-progress', (event) => {
+      const { index, total, file } = event.payload;
+      kokoroProgressEl.textContent = 'Downloading voice files: ' + (index + 1) + ' / ' + total + ' (' + file + ')';
+    });
+    try {
+      await invoke('kokoro_download_model');
+      kokoroProgressEl.textContent = 'Download complete.';
+    } catch (e) {
+      kokoroProgressEl.textContent = 'Download failed: ' + e;
+      kokoroDownloadBtn.disabled = false;
+    } finally {
+      unlisten();
+      await refreshKokoroStatus();
+    }
+  });
+
+  kokoroStartBtn.addEventListener('click', async () => {
+    try {
+      await invoke('kokoro_start');
+      kokoroStatusEl.textContent = 'Local voice service is running on 127.0.0.1:5757.';
+    } catch (e) {
+      kokoroStatusEl.textContent = 'Could not start the local voice service: ' + e;
+    }
+  });
+
+  kokoroStopBtn.addEventListener('click', async () => {
+    try {
+      await invoke('kokoro_stop');
+      kokoroStatusEl.textContent = 'Local voice service stopped.';
+    } catch (e) {
+      kokoroStatusEl.textContent = 'Could not stop the local voice service: ' + e;
+    }
+  });
 
   const applyGeneral = () => {
     p.ttsEnabled = document.getElementById('pf-ttsEnabled').checked;
@@ -1755,6 +1878,7 @@ function renderChatOverlayProperties(item, body) {
     p.pollyRegion = document.getElementById('pf-pollyRegion').value.trim() || 'us-east-1';
     p.pollyVoiceId = document.getElementById('pf-pollyVoiceId').value.trim() || 'Joanna';
     p.pollyEngine = document.getElementById('pf-pollyEngine').value;
+    p.kokoroVoice = document.getElementById('pf-kokoroVoice').value;
     p.filterCommands = document.getElementById('pf-filterCommands').checked;
     p.filterEmoteOnly = document.getElementById('pf-filterEmoteOnly').checked;
     p.maxVisibleMessages = parseInt(document.getElementById('pf-maxVisibleMessages').value, 10) || 3;
@@ -1763,6 +1887,7 @@ function renderChatOverlayProperties(item, body) {
   [
     'pf-ttsEnabled', 'pf-ttsProvider', 'pf-ttsRate', 'pf-ttsVolume', 'pf-ttsVoice',
     'pf-pollyAccessKeyId', 'pf-pollySecretAccessKey', 'pf-pollyRegion', 'pf-pollyVoiceId', 'pf-pollyEngine',
+    'pf-kokoroVoice',
     'pf-filterCommands', 'pf-filterEmoteOnly', 'pf-maxVisibleMessages', 'pf-messageDisplaySeconds',
   ].forEach((id) => document.getElementById(id).addEventListener('change', applyGeneral));
 }

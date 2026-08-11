@@ -4,6 +4,39 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.9.0 — 2026-08-11 (pre-release, pending verification)
+
+### Added
+- **Chat + TTS Overlay: Kokoro local voice option** — a third TTS
+  provider alongside the free browser voice and Amazon Polly, fully
+  offline: no AWS key, no relay, no per-character or ongoing cost. Runs
+  as a small local voice service (`kokoro-sidecar`) that Stream Composer
+  Suite spawns on your own machine, talking to it over `127.0.0.1` —
+  architecturally identical to how the Polly connector talks to AWS, just
+  pointed at localhost. 29 English voices (American + British, several
+  per gender). One-time ~110MB download (model + voices), not bundled in
+  the installer itself, downloaded on first use from the properties
+  panel.
+- **The local voice service is a separate process from the editor app on
+  purpose** — it does not close when you close Stream Composer Suite
+  (so it keeps working while you're live in OBS with the editor closed),
+  and does not start itself automatically. Start/Stop controls live in
+  the Chat + TTS Overlay's properties panel.
+
+### Verification note
+The `kokoro-sidecar` binary was tested standalone and confirmed to
+produce genuine synthesized audio (real 24kHz WAV output from real text,
+not a stub) — including a real-world resilience check: on this
+development machine it tried CUDA (unavailable), fell back to DirectML
+(failed on this GPU/model combo), fell back to CPU, and succeeded
+without crashing. The Rust backend commands (model download, sidecar
+spawn/stop) compile cleanly and the full app builds and bundles the
+sidecar correctly. **What has NOT been click-tested**: the actual
+in-app Download → Start → speak-in-OBS flow, since driving this app's
+native Tauri window isn't something any tool available here can do (the
+same category of gap as v1.0.0's original drag/resize flow and the Kick
+placeholder-key connector) — needs Harvey's real test.
+
 ## v1.8.0 — 2026-08-11 (pre-release, pending verification)
 
 ### Changed
