@@ -18,6 +18,7 @@ import { buildPopupSlideScript } from './popup-slide-engine.js';
 import { buildChatOverlayScript } from './chat-tts-engine.js';
 import { buildCountdownTimerScript } from './countdown-timer-engine.js';
 import { buildPngtuberScript } from './pngtuber-engine.js';
+import { buildViewerPetScript } from './viewer-pet-engine.js';
 
 // Escapes text for safe use inside an HTML attribute or text node.
 function escapeHtml(s) {
@@ -276,6 +277,37 @@ function renderPngtuberItem(item, instanceId, assetPathsById) {
   return { html, script };
 }
 
+// ---- VIEWER PET --------------------------------------------------------
+// petAssetPath comes from collectAssetCopies() below, same lookup-by-id
+// pattern the `image` item type already uses (a viewer pet only ever has
+// one image, unlike pngtuber's idle/talking pair).
+function renderViewerPetItem(item, instanceId, assetPathsById) {
+  const petAssetPath = assetPathsById[item.id] || '';
+  const html = `
+<div class="item item-viewer-pet" style="${wrapperStyle(item)}">
+  <style>
+    #${instanceId}-wrap { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #${instanceId}-img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: 50% 100%; }
+    #${instanceId}-img.is-reacting { animation: ${instanceId}-bounce 0.5s ease; }
+    @keyframes ${instanceId}-bounce {
+      0% { transform: scale(1, 1); }
+      30% { transform: scale(1.08, 0.9) translateY(4px); }
+      55% { transform: scale(0.94, 1.1) translateY(-14px); }
+      75% { transform: scale(1.04, 0.96) translateY(2px); }
+      100% { transform: scale(1, 1); }
+    }
+    #${instanceId}-status { font-family: 'Inter', sans-serif; font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; margin-top: 6px; }
+  </style>
+  <div id="${instanceId}-wrap">
+    <img id="${instanceId}-img" src="${escapeHtml(petAssetPath)}" alt="">
+    <div id="${instanceId}-status"></div>
+  </div>
+</div>`;
+
+  const script = buildViewerPetScript(instanceId, petAssetPath, item.props);
+  return { html, script };
+}
+
 // ---- ASSET COLLECTION -------------------------------------------------
 // Every `image` item needs its source file copied into the output's
 // assets/ folder, and so does every popup-slide item's slide that uses a
@@ -304,6 +336,14 @@ export function collectAssetCopies(project) {
             destRelativePath: `assets/${item.id}-slide${i}.${ext}`,
           });
         }
+      });
+    }
+    if (item.type === 'viewer-pet' && item.props.petImagePath) {
+      const ext = (item.props.petImagePath.split('.').pop() || 'png').toLowerCase();
+      copies.push({
+        itemId: item.id,
+        sourcePath: item.props.petImagePath,
+        destRelativePath: `assets/${item.id}.${ext}`,
       });
     }
     if (item.type === 'pngtuber') {
@@ -343,6 +383,7 @@ export function buildSceneHtml(project, assetPathsById) {
     if (item.type === 'chat-overlay') return renderChatOverlayItem(item, `chat-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
     if (item.type === 'countdown-timer') return renderCountdownTimerItem(item, `countdown-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
     if (item.type === 'pngtuber') return renderPngtuberItem(item, `pngtuber-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
+    if (item.type === 'viewer-pet') return renderViewerPetItem(item, `pet-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     return { html: '', script: '' };
   });
 

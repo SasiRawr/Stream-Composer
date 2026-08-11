@@ -82,6 +82,21 @@ fn file_exists(path: String) -> bool {
     std::path::Path::new(&path).is_file()
 }
 
+/// Resolves a filename to a real path inside this app's own local-data
+/// directory (creating that directory if needed) - used for small
+/// app-level persisted files (e.g. the Asset Library) that aren't part
+/// of any one project, so they don't belong in a project folder. Deliberately
+/// generic rather than a dedicated "library" command - the frontend
+/// still does its own read_text_file/write_text_file/file_exists calls
+/// against the resolved path, same generic file-I/O commands every other
+/// persisted file in this app already uses.
+#[tauri::command]
+fn resolve_app_data_path(app: tauri::AppHandle, filename: String) -> Result<String, String> {
+    let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join(filename).to_string_lossy().to_string())
+}
+
 /// Opens a URL with whatever the operating system's default browser is.
 /// Used for single-item live preview (e.g. previewing a popup-slide item
 /// without doing a full Bake first): a temp scene.html is written, then
@@ -501,6 +516,7 @@ pub fn run() {
             read_binary_file_base64,
             write_binary_file,
             file_exists,
+            resolve_app_data_path,
             preview_overlay,
             copy_to_clipboard,
             kokoro_model_status,

@@ -4,6 +4,40 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.11.0 — 2026-08-11 (pre-release, pending verification)
+
+This closes out the original v1.x.0 series' three long-open items —
+asset library, template personalization, and viewer pets — bundled into
+one release since all three are small and closely related in scope.
+
+### Added
+- **Asset Library** — save any canvas item's settings (not its position)
+  to a small personal library, then drop a copy into any future project.
+  A new "Save to Library…" button appears in the Properties panel
+  whenever an item is selected; saved items show up in a new "Library"
+  panel with Insert/Remove actions. Stored locally on your own machine,
+  not tied to any one project.
+- **Starter Kit personalization** — an optional step when creating a
+  Starter Kit project: pick your own accent color (replaces the default
+  violet across every gradient/frame/badge in the template) and replace
+  the placeholder "YourSite.com" / "Follow @yourhandle" text, all before
+  the project is even created. No extra editing needed afterward.
+- **Viewer Pet overlay item** — a character image that bounces once for
+  every real chat message on a connected platform (Twitch or Kick for
+  now — same platform set Chat + TTS Overlay shipped with first, TikTok
+  can follow later). This is the chat-message-triggered version, not the
+  follow/sub/bits-triggered version — that one needs Twitch EventSub/
+  OAuth infrastructure this app doesn't have yet, a different, bigger
+  feature for later.
+
+### Verification note
+All three features are covered by automated tests (34 test files total
+now), but the live behaviors — real chat connections triggering the
+Viewer Pet's bounce, the Library persisting correctly across app
+restarts, personalization actually producing a correctly re-colored
+project — need a human to click through, same as every other
+live-behavior feature in this app.
+
 ## v1.10.0 — 2026-08-11 (pre-release, pending verification)
 
 ### Added

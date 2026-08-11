@@ -128,3 +128,48 @@ export function mergeStarterProjects(projects) {
   }
   return { canvasWidth, canvasHeight, items };
 }
+
+// Lightens a hex color toward white by the given fraction (0-1) - a plain
+// linear blend, the same "good enough, no color-space theory needed"
+// approach this project's other pure color helpers (e.g. background-
+// generator.js's hexToRgba) already use. Used to derive a template's
+// "soft" accent tone from whatever single accent color the user picks,
+// so personalization only ever needs one color input, not two.
+function lightenHex(hex, fraction) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const mix = (c) => Math.round(c + (255 - c) * fraction);
+  return '#' + [mix(r), mix(g), mix(b)].map((c) => c.toString(16).padStart(2, '0')).join('');
+}
+
+// Re-colors and re-texts an already-built starter project WITHOUT a full
+// re-edit - the "template personalization" item from ROADMAP.md's v1.x.0
+// series (task #46). Deliberately reuses 100% of the existing rendering
+// (frame/popup-slide items, their existing props shape) - this is a pure
+// data transform applied once at project-creation time, not new engine
+// code. Any option left null/empty/undefined leaves that aspect
+// unchanged - callers don't have to fill in every field.
+export function personalizeProject(project, { accentColor, siteText, socialText } = {}) {
+  const softColor = accentColor ? lightenHex(accentColor, 0.35) : null;
+  const items = project.items.map((item) => {
+    const props = { ...item.props };
+    if (item.type === 'frame' && accentColor) {
+      if (props.strokeColor === BRAND_COLORS.violet) props.strokeColor = accentColor;
+      if (props.gradientFrom === BRAND_COLORS.violet) props.gradientFrom = accentColor;
+    }
+    if (item.type === 'popup-slide') {
+      if (accentColor && props.colors) {
+        props.colors = { ...props.colors, violet: accentColor, violetSoft: softColor };
+      }
+      if ((siteText || socialText) && Array.isArray(props.slides)) {
+        props.slides = props.slides.map((slide) => {
+          if (siteText && slide.text === 'YourSite.com') return { ...slide, text: siteText };
+          if (socialText && slide.text === 'Follow @yourhandle') return { ...slide, text: socialText };
+          return slide;
+        });
+      }
+    }
+    return { ...item, props };
+  });
+  return { ...project, items };
+}

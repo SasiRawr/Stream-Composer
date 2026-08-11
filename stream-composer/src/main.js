@@ -24,7 +24,7 @@ import { applyVignette } from './vignette.js';
 import { PLATFORM_ICONS, platformIconSvg } from './popup-slide-icons.js';
 import { parseSlidesText, slidesToPlaintext, evalConfig, legacyConfigToPopupSlideProps } from './popup-slide-import.js';
 import { gradientCoordsForAngle } from './gradient.js';
-import { STARTER_TEMPLATES, mergeStarterProjects } from './starter-kit/manifest.js';
+import { STARTER_TEMPLATES, mergeStarterProjects, personalizeProject } from './starter-kit/manifest.js';
 import { STINGER_TEMPLATES, defaultStingerProps } from './stinger-templates.js';
 import { renderStingerFrame } from './stinger-render.js';
 import { checkAlphaSupport, exportStinger } from './stinger-export.js';
@@ -172,6 +172,13 @@ function defaultPropsFor(type) {
       holdMs: 200,       // how long the talking image stays up through brief pauses before falling back to idle
     };
   }
+  if (type === 'viewer-pet') {
+    return {
+      petImagePath: '',
+      platformKey: 'twitch', // 'twitch' | 'kick' — TikTok not yet supported, see viewer-pet-engine.js header
+      channelName: '',
+    };
+  }
   return {};
 }
 
@@ -181,6 +188,7 @@ function defaultSizeFor(type) {
   if (type === 'chat-overlay') return { width: 420, height: 600 }; // a tall message-feed shape
   if (type === 'countdown-timer') return { width: 420, height: 160 }; // a flat label+numbers bar
   if (type === 'pngtuber') return { width: 320, height: 320 };    // roughly square, typical character-art proportions
+  if (type === 'viewer-pet') return { width: 180, height: 180 };  // smaller than pngtuber — a corner critter, not a main character
   return { width: 300, height: 300 };
 }
 
@@ -208,11 +216,12 @@ async function createProject(canvasWidth, canvasHeight) {
 // one) in a folder the user picks. Picking more than one template merges
 // them via mergeStarterProjects() — see starter-kit/manifest.js for what
 // each template contains and how the merge picks a canvas size.
-async function createProjectFromTemplates(templates) {
+async function createProjectFromTemplates(templates, personalization) {
   if (templates.length === 0) return;
   const folder = await invoke('pick_project_folder');
   if (!folder) return;
   project = mergeStarterProjects(templates.map((t) => t.buildProject()));
+  if (personalization) project = personalizeProject(project, personalization);
   projectFolder = folder;
   await openWorkspace();
   await saveProject();
@@ -420,6 +429,7 @@ const PLACEHOLDER_ACCENTS = {
   'chat-overlay': '#35e6c4',
   'countdown-timer': '#ffb454',
   'pngtuber': '#ff6ec4',
+  'viewer-pet': '#7cffb4',
 };
 
 function createRectFabricObject(item) {
@@ -552,10 +562,138 @@ function deleteSelectedItem() {
   fabricCanvas.requestRenderAll();
 }
 
+// ---- ASSET LIBRARY ---------------------------------------------------------
+// A small app-level (not per-project) list of saved items - {id, name,
+// type, props} - persisted as library.json in this app's own local-data
+// directory (resolve_app_data_path + the same generic read/write/exists
+// commands every other persisted file in this app already uses, rather
+// than dedicated library-specific Rust commands). Position/size are
+// deliberately NOT saved here - those are per-project placement
+// decisions, not part of "what this item fundamentally is."
+const LIBRARY_TYPE_LABELS = {
+  frame: 'Frame / Border', image: 'Image', 'popup-slide': 'Popup Slide',
+  'chat-overlay': 'Chat + TTS Overlay', 'countdown-timer': 'Countdown Timer', pngtuber: 'PNGTuber',
+  'viewer-pet': 'Viewer Pet',
+};
+
+let libraryEntries = [];
+let libraryFilePath = null;
+
+async function loadLibrary() {
+  try {
+    libraryFilePath = await invoke('resolve_app_data_path', { filename: 'library.json' });
+    const exists = await invoke('file_exists', { path: libraryFilePath });
+    if (exists) {
+      const text = await invoke('read_text_file', { path: libraryFilePath });
+      libraryEntries = JSON.parse(text);
+    }
+  } catch (err) {
+    console.warn('Could not load the Asset Library:', err);
+    libraryEntries = [];
+  }
+  renderLibraryList();
+}
+
+async function saveLibraryToDisk() {
+  if (!libraryFilePath) return;
+  await invoke('write_text_file', { path: libraryFilePath, contents: JSON.stringify(libraryEntries, null, 2) });
+}
+
+function renderLibraryList() {
+  if (!els.libraryList) return;
+  if (libraryEntries.length === 0) {
+    els.libraryList.innerHTML = '<div class="hint">Nothing saved yet — select an item and click "Save to Library…" in the Properties panel to add one.</div>';
+    return;
+  }
+  els.libraryList.innerHTML = libraryEntries.map((entry) => `
+    <div class="slide-card">
+      <div class="slide-card-head"><span>${escapeHtml(entry.name)}</span></div>
+      <div class="hint">${escapeHtml(LIBRARY_TYPE_LABELS[entry.type] || entry.type)}</div>
+      <div class="button-row">
+        <button class="secondary" data-library-insert="${entry.id}" type="button">Insert</button>
+        <button class="secondary" data-library-delete="${entry.id}" type="button">Remove</button>
+      </div>
+    </div>
+  `).join('');
+  els.libraryList.querySelectorAll('[data-library-insert]').forEach((btn) => {
+    btn.addEventListener('click', () => insertLibraryEntry(btn.getAttribute('data-library-insert')));
+  });
+  els.libraryList.querySelectorAll('[data-library-delete]').forEach((btn) => {
+    btn.addEventListener('click', () => deleteLibraryEntry(btn.getAttribute('data-library-delete')));
+  });
+}
+
+async function insertLibraryEntry(entryId) {
+  const entry = libraryEntries.find((e) => e.id === entryId);
+  if (!entry || !project) return;
+  await addItem(entry.type, JSON.parse(JSON.stringify(entry.props)));
+}
+
+async function deleteLibraryEntry(entryId) {
+  libraryEntries = libraryEntries.filter((e) => e.id !== entryId);
+  await saveLibraryToDisk();
+  renderLibraryList();
+}
+
+// Reuses the exact <dialog>-based prompt pattern promptSceneName()
+// already established, rather than a native window.prompt() (unused
+// anywhere else in this app, and less consistent with its own UI chrome).
+function promptLibraryName(defaultName) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('saveToLibraryDialog');
+    const input = document.getElementById('saveToLibraryInput');
+    const confirmBtn = document.getElementById('saveToLibraryConfirmBtn');
+    const cancelBtn = document.getElementById('saveToLibraryCancelBtn');
+    input.value = defaultName;
+
+    function cleanup() {
+      confirmBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+      dialog.removeEventListener('cancel', onCancel);
+    }
+    function onConfirm() {
+      cleanup();
+      dialog.close();
+      resolve(input.value);
+    }
+    function onCancel() {
+      cleanup();
+      dialog.close();
+      resolve(null);
+    }
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+    dialog.addEventListener('cancel', onCancel); // Esc key closes <dialog>, fires 'cancel'
+
+    dialog.showModal();
+    input.focus();
+    input.select();
+  });
+}
+
+async function saveSelectedItemToLibrary() {
+  if (!selectedItemId || !project) return;
+  const item = project.items.find((i) => i.id === selectedItemId);
+  if (!item) return;
+  const defaultName = LIBRARY_TYPE_LABELS[item.type] || item.type;
+  const name = await promptLibraryName(defaultName);
+  if (!name) return;
+  libraryEntries.push({
+    id: uid(),
+    name,
+    type: item.type,
+    props: JSON.parse(JSON.stringify(item.props)),
+  });
+  await saveLibraryToDisk();
+  renderLibraryList();
+  setStatus('Saved "' + name + '" to the Library.', 'ok');
+}
+
 // ---- SELECTION + PROPERTIES PANEL ---------------------------------------------
 function selectItem(itemId) {
   selectedItemId = itemId;
   els.deleteItemBtn.hidden = !itemId;
+  if (els.saveToLibraryBtn) els.saveToLibraryBtn.hidden = !itemId;
   renderPropertiesPanel();
 }
 
@@ -572,6 +710,7 @@ function renderPropertiesPanel() {
   if (item.type === 'chat-overlay') return renderChatOverlayProperties(item, body);
   if (item.type === 'countdown-timer') return renderCountdownTimerProperties(item, body);
   if (item.type === 'pngtuber') return renderPngtuberProperties(item, body);
+  if (item.type === 'viewer-pet') return renderViewerPetProperties(item, body);
 }
 
 function renderFrameProperties(item, body) {
@@ -2071,6 +2210,43 @@ function renderPngtuberProperties(item, body) {
   ['pf-micThreshold', 'pf-holdMs'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
 }
 
+function renderViewerPetProperties(item, body) {
+  const p = item.props;
+
+  body.innerHTML = `
+    <div class="field"><label>Pet image</label>
+      <div class="hint">${escapeHtml(p.petImagePath || 'No image chosen yet')}</div>
+    </div>
+    <button class="secondary block" id="pf-pickPetImage" type="button">Choose pet image…</button>
+    <div class="field">
+      <label>Chat platform</label>
+      <select id="pf-petPlatform">
+        <option value="twitch" ${p.platformKey !== 'kick' ? 'selected' : ''}>Twitch</option>
+        <option value="kick" ${p.platformKey === 'kick' ? 'selected' : ''}>Kick</option>
+      </select>
+      <div class="hint">TikTok isn't supported for Viewer Pets yet — Twitch and Kick only for now.</div>
+    </div>
+    <div class="field">
+      <label>Channel name</label>
+      <input type="text" id="pf-petChannelName" value="${escapeHtml(p.channelName)}">
+    </div>
+    <div class="hint">Bounces once for every real chat message on the connected platform — only reacts in the baked output (in OBS), there's no live preview here in the editor.</div>
+  `;
+
+  document.getElementById('pf-pickPetImage').addEventListener('click', async () => {
+    const path = await invoke('pick_image_file');
+    if (!path) return;
+    p.petImagePath = path;
+    renderPropertiesPanel();
+  });
+
+  const applyGeneral = () => {
+    p.platformKey = document.getElementById('pf-petPlatform').value;
+    p.channelName = document.getElementById('pf-petChannelName').value;
+  };
+  ['pf-petPlatform', 'pf-petChannelName'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
+}
+
 function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -2302,9 +2478,20 @@ function wireStarterKitDialog() {
     updateCreateEnabled();
   });
 
+  const personalizeToggle = document.getElementById('starterPersonalizeToggle');
+  const personalizeFields = document.getElementById('starterPersonalizeFields');
+  personalizeToggle.addEventListener('change', () => {
+    personalizeFields.style.display = personalizeToggle.checked ? '' : 'none';
+  });
+
   els.starterKitBtn.addEventListener('click', () => {
     checkboxes().forEach((c, i) => (c.checked = i === 0)); // default: first template only, like the old single-select
     updateCreateEnabled();
+    personalizeToggle.checked = false;
+    personalizeFields.style.display = 'none';
+    document.getElementById('starterAccentColor').value = '#7c5cff';
+    document.getElementById('starterSiteText').value = '';
+    document.getElementById('starterSocialText').value = '';
     dialog.showModal();
   });
   document.getElementById('cancelStarterKitBtn').addEventListener('click', () => dialog.close());
@@ -2313,8 +2500,13 @@ function wireStarterKitDialog() {
     const pickedKeys = new Set(checkboxes().filter((c) => c.checked).map((c) => c.value));
     const templates = STARTER_TEMPLATES.filter((t) => pickedKeys.has(t.key));
     if (templates.length === 0) return;
+    const personalization = personalizeToggle.checked ? {
+      accentColor: document.getElementById('starterAccentColor').value,
+      siteText: document.getElementById('starterSiteText').value.trim(),
+      socialText: document.getElementById('starterSocialText').value.trim(),
+    } : null;
     dialog.close();
-    await createProjectFromTemplates(templates);
+    await createProjectFromTemplates(templates, personalization);
   });
 }
 
@@ -2685,10 +2877,13 @@ window.addEventListener('DOMContentLoaded', () => {
     addChatOverlayBtn: document.getElementById('addChatOverlayBtn'),
     addCountdownTimerBtn: document.getElementById('addCountdownTimerBtn'),
     addPngtuberBtn: document.getElementById('addPngtuberBtn'),
+    addViewerPetBtn: document.getElementById('addViewerPetBtn'),
     canvasSizeLabel: document.getElementById('canvasSizeLabel'),
     fabricCanvasEl: document.getElementById('fabricCanvas'),
     propertiesBody: document.getElementById('propertiesBody'),
     deleteItemBtn: document.getElementById('deleteItemBtn'),
+    saveToLibraryBtn: document.getElementById('saveToLibraryBtn'),
+    libraryList: document.getElementById('libraryList'),
     bakeNewFolderBtn: document.getElementById('bakeNewFolderBtn'),
     bakeResultActions: document.getElementById('bakeResultActions'),
     stingerBuilderBtn: document.getElementById('stingerBuilderBtn'),
@@ -2726,7 +2921,10 @@ window.addEventListener('DOMContentLoaded', () => {
   els.addChatOverlayBtn.addEventListener('click', () => addItem('chat-overlay'));
   els.addCountdownTimerBtn.addEventListener('click', () => addItem('countdown-timer'));
   els.addPngtuberBtn.addEventListener('click', () => addItem('pngtuber'));
+  els.addViewerPetBtn.addEventListener('click', () => addItem('viewer-pet'));
   els.deleteItemBtn.addEventListener('click', deleteSelectedItem);
+  els.saveToLibraryBtn.addEventListener('click', saveSelectedItemToLibrary);
+  loadLibrary();
 
   document.addEventListener('keydown', (e) => {
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectedItemId && document.activeElement.tagName !== 'INPUT') {

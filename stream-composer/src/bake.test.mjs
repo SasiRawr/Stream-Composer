@@ -147,6 +147,21 @@ assert(pngtuberHtml.includes('IDLE_SRC = "assets/p1-idle.png"'), 'the idle asset
 assert(pngtuberHtml.includes('TALKING_SRC = "assets/p1-talking.png"'), 'the talking asset path reaches the inlined script');
 assert(pngtuberHtml.includes('getUserMedia'), "the pngtuber item's mic-detection script is inlined");
 
+// ---- collectAssetCopies + buildSceneHtml: viewer-pet item ----
+const petProject = baseProject([{
+  id: 'v1', type: 'viewer-pet', x: 0, y: 0, width: 200, height: 200, rotation: 0, zIndex: 0,
+  props: { petImagePath: 'C:/art/pet.png', platformKey: 'twitch', channelName: 'somestreamer' },
+}]);
+const petCopies = collectAssetCopies(petProject);
+assert(petCopies.length === 1 && petCopies[0].destRelativePath === 'assets/v1.png', 'a viewer-pet item with an image set produces exactly 1 asset copy');
+
+const petHtml = buildSceneHtml(petProject, { v1: 'assets/v1.png' });
+assert(petHtml.includes('item-viewer-pet'), 'the viewer-pet item is rendered');
+assert(petHtml.includes('pet-v1-0-img'), "the viewer-pet item's image element uses an instance-scoped id (got a match)");
+assert(petHtml.includes('src="assets/v1.png"'), 'the img tag points at the copied pet asset');
+assert(petHtml.includes('connectTwitch("somestreamer")'), "the viewer-pet item's Twitch connect call reaches the baked output");
+assert(petHtml.includes('is-reacting'), 'the bounce-reaction CSS class is present');
+
 // ---- buildSceneHtml: items sort by zIndex regardless of array order ----
 const outOfOrder = baseProject([
   { id: 'top', type: 'frame', x: 0, y: 0, width: 10, height: 10, rotation: 0, zIndex: 5,

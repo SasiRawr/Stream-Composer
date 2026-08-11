@@ -5,7 +5,7 @@
 // ============================================================================
 
 import { buildSceneHtml } from '../bake.js';
-import { STARTER_TEMPLATES, mergeStarterProjects } from './manifest.js';
+import { STARTER_TEMPLATES, mergeStarterProjects, personalizeProject } from './manifest.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -63,6 +63,34 @@ assert(new Set(ids).size === ids.length, 'merged items keep unique ids (no colli
 const zIndexes = merged.items.map((i) => i.zIndex);
 assert(new Set(zIndexes).size === zIndexes.length, 'merged items get renumbered zIndex with no ties');
 assert(JSON.stringify(zIndexes) === JSON.stringify([...zIndexes].sort((a, b) => a - b)), 'merged zIndex is sequential in template order');
+
+// ---- personalizeProject: accent color + text overrides ----
+const webcamScene = STARTER_TEMPLATES.find((t) => t.key === 'webcam-scene').buildProject();
+const personalized = personalizeProject(webcamScene, { accentColor: '#ff6ec4', siteText: 'twitch.tv/example', socialText: 'Follow @example' });
+
+const frameItem = personalized.items.find((i) => i.type === 'frame');
+assert(frameItem.props.strokeColor === '#ff6ec4', 'a frame item\'s brand-violet stroke color gets replaced with the chosen accent');
+assert(frameItem.props.gradientFrom === '#ff6ec4', 'a frame item\'s brand-violet gradient start also gets replaced with the chosen accent');
+
+const slideItem = personalized.items.find((i) => i.type === 'popup-slide');
+assert(slideItem.props.colors.violet === '#ff6ec4', 'a popup-slide item\'s violet color token gets replaced with the chosen accent');
+assert(slideItem.props.colors.violetSoft !== '#a594ff', 'the derived violetSoft token changes too, not left as the old brand default');
+assert(slideItem.props.slides[0].text === 'twitch.tv/example', 'the "YourSite.com" placeholder slide gets replaced with the custom site text');
+assert(slideItem.props.slides[1].text === 'Follow @example', 'the "Follow @yourhandle" placeholder slide gets replaced with the custom social text');
+
+// ---- personalizeProject: original template is never mutated ----
+const originalAgain = STARTER_TEMPLATES.find((t) => t.key === 'webcam-scene').buildProject();
+assert(originalAgain.items.find((i) => i.type === 'frame').props.strokeColor === '#7c5cff', 'calling personalizeProject on one project never mutates a freshly-built copy of the same template (buildProject() factories stay independent)');
+
+// ---- personalizeProject: no options at all is a safe no-op ----
+const untouched = personalizeProject(webcamScene, {});
+assert(JSON.stringify(untouched) === JSON.stringify(webcamScene), 'calling personalizeProject with no options returns an unchanged copy, not a crash or partial mutation');
+
+// ---- personalizeProject: only accent color set, text left as-is ----
+const colorOnly = personalizeProject(webcamScene, { accentColor: '#35e6c4' });
+const colorOnlySlide = colorOnly.items.find((i) => i.type === 'popup-slide');
+assert(colorOnlySlide.props.colors.violet === '#35e6c4', 'accent color alone still applies');
+assert(colorOnlySlide.props.slides[0].text === 'YourSite.com', 'text is left at its default when no text override is given, even though color changed');
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

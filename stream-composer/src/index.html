@@ -49,10 +49,18 @@
     <button class="secondary block" id="addChatOverlayBtn" type="button">+ Chat + TTS Overlay</button>
     <button class="secondary block" id="addCountdownTimerBtn" type="button">+ Countdown Timer</button>
     <button class="secondary block" id="addPngtuberBtn" type="button">+ PNGTuber</button>
+    <button class="secondary block" id="addViewerPetBtn" type="button">+ Viewer Pet</button>
     <div class="hint">
       A Frame is a positioning guide (e.g. for lining up your real OBS
       camera source underneath it) or a decorative border — it doesn't
       capture your camera itself.
+    </div>
+  </div>
+
+  <div class="palette panel" id="libraryPanel">
+    <h2>Library</h2>
+    <div id="libraryList">
+      <div class="hint">Nothing saved yet — select an item and click "Save to Library…" in the Properties panel to add one.</div>
     </div>
   </div>
 
@@ -68,6 +76,7 @@
     <div id="propertiesBody">
       <div class="hint">Select an item on the canvas to edit it.</div>
     </div>
+    <button class="secondary block" id="saveToLibraryBtn" type="button" hidden>Save to Library…</button>
     <button class="remove-btn" id="deleteItemBtn" type="button" hidden>Delete item</button>
   </div>
 
@@ -129,6 +138,19 @@
   </div>
 </dialog>
 
+<dialog id="saveToLibraryDialog">
+  <h2>Save to Library</h2>
+  <div class="hint">Saves this item's settings (not its position) so you can drop a copy into any project later.</div>
+  <div class="field">
+    <label for="saveToLibraryInput">Name</label>
+    <input type="text" id="saveToLibraryInput" value="">
+  </div>
+  <div class="actions">
+    <button class="primary" id="saveToLibraryConfirmBtn" type="button">Save</button>
+    <button class="secondary" id="saveToLibraryCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
 <!--
   Starter Kit dialog: pick one or more ready-made templates instead of
   starting from a blank canvas. Always creates a brand-new project in a
@@ -147,6 +169,15 @@
       <button class="secondary" id="starterSelectNoneBtn" type="button">Select none</button>
     </div>
     <div id="starterTemplateList"></div>
+  </div>
+  <div class="field">
+    <label><input type="checkbox" id="starterPersonalizeToggle"> Personalize before creating</label>
+    <div class="hint">Optional — swap the default violet accent for your own color and replace the placeholder site/handle text, without any extra editing after.</div>
+  </div>
+  <div id="starterPersonalizeFields" style="display:none;">
+    <div class="field"><label>Accent color</label><input type="color" id="starterAccentColor" value="#7c5cff"></div>
+    <div class="field"><label>Replace "YourSite.com" with</label><input type="text" id="starterSiteText" placeholder="Leave blank to keep the default"></div>
+    <div class="field"><label>Replace "Follow @yourhandle" with</label><input type="text" id="starterSocialText" placeholder="Leave blank to keep the default"></div>
   </div>
   <div class="actions">
     <button class="primary" id="createStarterProjectBtn" type="button">Create</button>
