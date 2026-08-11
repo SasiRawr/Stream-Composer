@@ -4,6 +4,22 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.8.0 — 2026-08-11 (pre-release, pending verification)
+
+### Changed
+- **Chat + TTS Overlay: platform picker redesigned as a dropdown** — with
+  Twitch, Kick, and TikTok all listed as always-visible cards, the
+  properties panel was getting crowded. Now a single "Chat platform"
+  dropdown picks the active platform, showing only that platform's fields
+  (channel name, API key if needed). A new "Using a Multi-Chat or
+  Multi-Streaming?" checkbox reveals a second dropdown + fields for
+  streamers simulcasting to more than one platform at once, so both feed
+  into the same combined TTS/message feed.
+- **Trovo listed, not built** — added to the platform dropdown as a
+  disabled/greyed-out option with an explanation, rather than silently
+  left out: Trovo ended live-streaming platform-wide on June 30, 2026,
+  so there's no live chat left to connect to.
+
 ## v1.7.0 — 2026-08-11 (pre-release, pending verification)
 
 ### Added

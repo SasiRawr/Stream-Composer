@@ -497,6 +497,68 @@ question entirely for this one case. Worth Harvey just trying voiceId
 `Justin`, engine `standard`, once the relay's DNS record and AWS key are
 in (task #34).
 
+### Multi-chat aggregation, voice cloning, and a second local-TTS survey (2026-08-11)
+
+Three follow-up research questions from the same morning, full synthesis
+published as an Artifact:
+https://claude.ai/code/artifact/277c142e-2dcb-4395-8ba8-8d1a0650c383
+
+- **Multi-chat/multi-streaming aggregation ("1-chat-to-rule-them-all")**:
+  a crowded but fragmented market (Restream Chat, Streamlabs, SleepyChat,
+  Casterlabs, Streamerbot all do some version of this) — not a gap, but
+  no single tool owns "free, desktop-native, TTS-first multi-chat." The
+  dropdown + multi-chat toggle shipped this same session (v1.8.0, see
+  below) is the right shape for it, reusing the existing per-platform
+  parsing/badge/TTS pipeline rather than a new system. Real gotchas for
+  later: message ordering across sockets, TTS queue backlog under
+  combined load, and Twitch's own TOS technically restricting display of
+  non-Twitch chat while live on Twitch (a UI disclaimer, not a blocker).
+- **Voice cloning for Polly "Justin" / Tikfinity "AI Pro"**: technically
+  doable as a rough personal prototype (OpenVoice, MIT license, ~2-3
+  hours to wire up, "rough but usable" quality) — but genuinely risky to
+  ship to other users. 2025/2026 brought real legal teeth to this (US AI
+  Transparency and Voice Rights Act, EU Digital Personality Act,
+  Tennessee's ELVIS Act all extend right-of-publicity to synthetic
+  voices; ElevenLabs/Amazon's own terms prohibit unauthorized mimicry;
+  voice-cloning IP disputes up ~300% YoY). If this becomes a real
+  feature: let users train on their OWN recorded voice samples instead
+  of cloning a named commercial voice — same tech, zero IP exposure.
+- **Second local-TTS survey**: found a genuinely strong second candidate
+  alongside Kokoro — **Chatterbox Turbo** (Resemble AI, MIT license,
+  faster than Kokoro, <100ms time-to-first-audio, studio-grade emotional
+  tone control, 23 languages). No Rust crate yet, would need a CLI/
+  subprocess wrap. Also confirmed to avoid: Fish Speech/F5-TTS (CC-BY-NC
+  on the open tier — non-commercial only), Bark (MIT but 5-10 min per 10
+  sec of audio on CPU, unusable for live chat), Coqui XTTS-v2 (CPML,
+  non-commercial, company defunct).
+
+### Chat + TTS Overlay platform picker redesigned as a dropdown (v1.8.0, 2026-08-11)
+
+With Twitch/Kick/TikTok all shown as always-visible cards, the
+properties panel was getting crowded — Harvey's direct feedback. Rebuilt
+as a single "Chat platform" dropdown (shows only the selected platform's
+fields) plus a "Using a Multi-Chat or Multi-Streaming?" checkbox that
+reveals a second dropdown for simultaneous multi-platform use. The
+underlying slot-selection rules (switching primary while a secondary is
+active, what happens when the same platform gets picked for both slots,
+toggling multi-chat off) were pulled out into pure functions in
+`chat-platforms.js` (`activePlatformKeys`/`ensurePrimarySelected`/
+`selectPrimaryPlatform`/`selectSecondaryPlatform`/`setMultiChatEnabled`)
+specifically so this logic is Node-tested (14 new assertions) rather than
+only eyeballed in a browser — this app's Tauri-dependent flows can't be
+driven by Playwright MCP (web-content-only, confirmed again this
+session), so pulling testable logic out of DOM closures is the real
+mitigation, not a nice-to-have.
+
+**Trovo added to the platform list, but disabled** — Harvey asked for it
+to be added; research (already on record from the v1.2.0 platform
+scoping pass) found Trovo's live-streaming shut down platform-wide on
+June 30, 2026, which had already passed as of this date. Rather than
+silently skip it or silently build a dead connector, it's listed in the
+dropdown greyed out with an explanation, matching this project's
+"never silently omit, always show why" convention (same pattern as the
+Kick placeholder-key gap).
+
 ### PNGTuber/VTuber — PNGTuber is small and near-term, full VTuber is a
 ### separate, much bigger project
 

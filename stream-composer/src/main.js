@@ -28,7 +28,10 @@ import { STARTER_TEMPLATES, mergeStarterProjects } from './starter-kit/manifest.
 import { STINGER_TEMPLATES, defaultStingerProps } from './stinger-templates.js';
 import { renderStingerFrame } from './stinger-render.js';
 import { checkAlphaSupport, exportStinger } from './stinger-export.js';
-import { CHAT_PLATFORMS, visibleChatPlatforms } from './chat-platforms.js';
+import {
+  CHAT_PLATFORMS, visibleChatPlatforms,
+  activePlatformKeys, ensurePrimarySelected, selectPrimaryPlatform, selectSecondaryPlatform, setMultiChatEnabled,
+} from './chat-platforms.js';
 import { defaultBackgroundProps, drawBackground } from './background-generator.js';
 import { defaultPollyProps, POLLY_VOICE_SUGGESTIONS } from './polly-tts.js';
 
@@ -108,6 +111,7 @@ function defaultPropsFor(type) {
       maxVisibleMessages: 3,
       messageDisplayMs: 6000,
       showAdultPlatforms: false,
+      multiChatEnabled: false, // dropdown-based platform picker — see renderChatOverlayProperties
     };
   }
   if (type === 'countdown-timer') {
@@ -1535,52 +1539,113 @@ function renderPopupSlideProperties(item, body) {
 
 function renderChatOverlayProperties(item, body) {
   const p = item.props;
+  if (typeof p.multiChatEnabled !== 'boolean') p.multiChatEnabled = false; // tolerate a project saved before this existed
 
-  function renderPlatformList() {
-    return visibleChatPlatforms(p.showAdultPlatforms).map((platform) => {
-      let entry = p.platforms.find((pl) => pl.key === platform.key);
-      if (!entry) {
-        entry = { key: platform.key, enabled: false, channelName: '', apiKey: '' }; // tolerate a platform added after this project was saved
-        p.platforms.push(entry);
-      }
-      const apiKeyField = platform.needsApiKey ? `
-          <div class="field">
-            <label>${escapeHtml(platform.label)} API key</label>
-            <input type="password" data-platform="${platform.key}" data-field="apiKey" value="${escapeHtml(entry.apiKey || '')}" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="hint-warn">${escapeHtml(platform.label)} requires a signing service (this app has no way to connect to it directly) — this uses Euler Stream, a third-party API with its own free tier (eulerstream.com). ${escapeHtml(platform.label)} is also known to fingerprint and restrict automated-looking connections more aggressively than Twitch tolerates — a real risk to your own account, worth knowing before connecting a live channel.</div>
-      ` : '';
-      return `
-        <div class="slide-card">
-          <div class="slide-card-head"><span>${platform.label.toUpperCase()}</span></div>
-          <div class="field">
-            <label><input type="checkbox" data-platform="${platform.key}" data-field="enabled" ${entry.enabled ? 'checked' : ''}> Enable</label>
-          </div>
-          <div class="field">
-            <label>Channel name</label>
-            <input type="text" data-platform="${platform.key}" data-field="channelName" value="${escapeHtml(entry.channelName)}">
-          </div>
-          ${apiKeyField}
-        </div>
-      `;
-    }).join('');
+  function entryFor(key) {
+    let entry = p.platforms.find((pl) => pl.key === key);
+    if (!entry) {
+      entry = { key, enabled: false, channelName: '', apiKey: '' }; // tolerate a platform added after this project was saved
+      p.platforms.push(entry);
+    }
+    return entry;
   }
 
-  function wirePlatformInputs() {
-    document.getElementById('pf-chatPlatformList').querySelectorAll('input').forEach((el) => {
+  function platformOptionsHtml(selectedKey, excludeKey, includeEmptyOption) {
+    const emptyOption = includeEmptyOption ? `<option value="" ${selectedKey ? '' : 'selected'}>Choose a platform…</option>` : '';
+    return emptyOption + visibleChatPlatforms(p.showAdultPlatforms)
+      .filter((pl) => pl.key !== excludeKey)
+      .map((pl) => {
+        const disabledAttr = pl.disabled ? 'disabled' : '';
+        const label = pl.disabled ? `${pl.label} (unavailable)` : pl.label;
+        const selectedAttr = pl.key === selectedKey ? 'selected' : '';
+        return `<option value="${pl.key}" ${disabledAttr} ${selectedAttr}>${escapeHtml(label)}</option>`;
+      }).join('');
+  }
+
+  function platformFieldsHtml(key, fieldsId) {
+    const platform = CHAT_PLATFORMS.find((pl) => pl.key === key);
+    if (!platform || platform.disabled) return '';
+    const entry = entryFor(key);
+    const apiKeyField = platform.needsApiKey ? `
+        <div class="field">
+          <label>${escapeHtml(platform.label)} API key</label>
+          <input type="password" data-slot-field="apiKey" value="${escapeHtml(entry.apiKey || '')}" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="hint-warn">${escapeHtml(platform.label)} requires a signing service (this app has no way to connect to it directly) — this uses Euler Stream, a third-party API with its own free tier (eulerstream.com). ${escapeHtml(platform.label)} is also known to fingerprint and restrict automated-looking connections more aggressively than Twitch tolerates — a real risk to your own account, worth knowing before connecting a live channel.</div>
+    ` : '';
+    return `
+      <div class="field" data-slot-fields="${fieldsId}">
+        <label>${escapeHtml(platform.label)} channel name</label>
+        <input type="text" data-slot-field="channelName" value="${escapeHtml(entry.channelName)}">
+      </div>
+      <div data-slot-fields="${fieldsId}">${apiKeyField}</div>
+    `;
+  }
+
+  function renderPlatformPicker() {
+    ensurePrimarySelected(p);
+    const [resolvedPrimary, secondaryKey] = activePlatformKeys(p);
+
+    return `
+      <div class="field">
+        <label>Chat platform</label>
+        <select id="pf-primaryPlatform">${platformOptionsHtml(resolvedPrimary, null)}</select>
+      </div>
+      <div id="pf-primaryFields">${platformFieldsHtml(resolvedPrimary, 'primary')}</div>
+      <div class="field">
+        <label><input type="checkbox" id="pf-multiChatEnabled" ${p.multiChatEnabled ? 'checked' : ''}> Using a Multi-Chat or Multi-Streaming?</label>
+      </div>
+      <div id="pf-secondaryBlock" style="${p.multiChatEnabled ? '' : 'display:none;'}">
+        <div class="field">
+          <label>Second chat platform</label>
+          <select id="pf-secondaryPlatform">${platformOptionsHtml(secondaryKey, resolvedPrimary, true)}</select>
+        </div>
+        <div id="pf-secondaryFields">${secondaryKey ? platformFieldsHtml(secondaryKey, 'secondary') : ''}</div>
+      </div>
+    `;
+  }
+
+  function wireSlotFields(containerEl, key) {
+    containerEl.querySelectorAll('[data-slot-field]').forEach((el) => {
       el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', (e) => {
-        const key = e.target.getAttribute('data-platform');
-        const field = e.target.getAttribute('data-field');
-        const entry = p.platforms.find((pl) => pl.key === key);
-        if (!entry) return;
-        entry[field] = field === 'enabled' ? e.target.checked : e.target.value;
+        const entry = entryFor(key);
+        entry[e.target.getAttribute('data-slot-field')] = e.target.value;
       });
     });
   }
 
+  function wirePlatformPicker() {
+    const container = document.getElementById('pf-chatPlatformList');
+
+    const primarySelect = document.getElementById('pf-primaryPlatform');
+    wireSlotFields(document.getElementById('pf-primaryFields'), primarySelect.value);
+    primarySelect.addEventListener('change', (e) => {
+      selectPrimaryPlatform(p, e.target.value);
+      container.innerHTML = renderPlatformPicker();
+      wirePlatformPicker();
+    });
+
+    const multiChatBox = document.getElementById('pf-multiChatEnabled');
+    multiChatBox.addEventListener('change', (e) => {
+      setMultiChatEnabled(p, e.target.checked);
+      container.innerHTML = renderPlatformPicker();
+      wirePlatformPicker();
+    });
+
+    if (p.multiChatEnabled) {
+      const secondarySelect = document.getElementById('pf-secondaryPlatform');
+      const secondaryFields = document.getElementById('pf-secondaryFields');
+      if (secondaryFields && secondarySelect.value) wireSlotFields(secondaryFields, secondarySelect.value);
+      secondarySelect.addEventListener('change', (e) => {
+        selectSecondaryPlatform(p, e.target.value); // '' = the "Choose a platform…" placeholder, nothing to activate
+        container.innerHTML = renderPlatformPicker();
+        wirePlatformPicker();
+      });
+    }
+  }
+
   body.innerHTML = `
-    <div class="field"><label>Chat platforms</label></div>
-    <div id="pf-chatPlatformList">${renderPlatformList()}</div>
+    <div id="pf-chatPlatformList">${renderPlatformPicker()}</div>
     <div class="field">
       <label><input type="checkbox" id="pf-showAdultPlatforms" ${p.showAdultPlatforms ? 'checked' : ''}> Show adult-platform options</label>
     </div>
@@ -1644,12 +1709,12 @@ function renderChatOverlayProperties(item, body) {
     <div class="hint">Chat connections only run in the baked overlay (in OBS) — there's no live preview of real messages here in the editor.</div>
     <div class="hint">After changing these settings and re-baking, OBS keeps showing the old version until you refresh it: right-click the Browser Source → Properties → "Refresh cache of current page".</div>
   `;
-  wirePlatformInputs();
+  wirePlatformPicker();
 
   document.getElementById('pf-showAdultPlatforms').addEventListener('change', (e) => {
     p.showAdultPlatforms = e.target.checked;
-    document.getElementById('pf-chatPlatformList').innerHTML = renderPlatformList();
-    wirePlatformInputs();
+    document.getElementById('pf-chatPlatformList').innerHTML = renderPlatformPicker();
+    wirePlatformPicker();
   });
 
   // The editor window is Chromium (WebView2), same as the baked overlay, so
