@@ -234,6 +234,46 @@ release.
   requirement once that wall is addressed, not assumed solved by copying
   the Twitch/Kick connector pattern as-is.
 
+  **Feasibility re-check, same night, better news than expected.** The
+  maintained community connector no longer tries to compute TikTok's
+  request signature itself — it delegates entirely to a third-party
+  signing service, Euler Stream (eulerstream.com), which exposes a plain
+  REST API: one HTTP call in, a signed WebSocket URL out. The actual chat
+  connection is then opened directly by the client, same shape as the
+  existing Twitch/Kick connectors. This means the real backend
+  requirement may be much smaller than originally assumed — possibly
+  zero:
+  - **If Euler Stream's API allows a direct browser call (CORS) — not yet
+    confirmed, needs a live test** — this could ship as a bring-your-own-
+    Euler-key pattern, architecturally identical to the Polly bring-your-
+    own-AWS-key connector shipped as v1.6.0 and the already-decided
+    YouTube bring-your-own-key plan. No backend at all. Euler has a free
+    tier (2,500 requests/day, forever).
+  - If CORS is blocked, the backend shrinks to "proxy one HTTP call, hand
+    back a URL" — much lighter than hosting a full relay, and the same
+    basic shape ("hold an API key server-side") a Polly relay would need,
+    so the two could plausibly share infrastructure if one ever gets
+    built.
+  - **Join/leave filtering is directly solvable, not just theoretically
+    filterable**: TikTok's live event stream separates real chat messages
+    (`WebcastChatMessage`) from joins (`WebcastMemberMessage`), gifts,
+    likes, and follows into distinctly-typed events — a connector can
+    just ignore everything except real chat messages, the same way the
+    Twitch connector already ignores non-`PRIVMSG` IRC lines. The mixing
+    Harvey sees is TikTok's own official chat UI's presentation choice,
+    not a limit of the underlying data.
+  - **Real risk, not just a technical caveat**: TikTok is described
+    (2026 sources) as actively fingerprinting and banning accounts/
+    traffic it flags as automated — a meaningfully more aggressive
+    enforcement posture than Twitch tolerates for its anonymous-IRC
+    convention. This is a risk to a *streamer's own TikTok account*, not
+    just an engineering inconvenience, and needs to be weighed honestly
+    before committing to this, not glossed over.
+  - **Next concrete step, not yet done**: confirm whether Euler Stream's
+    API actually permits a direct browser `fetch()` call (the CORS
+    question above) — this is the one thing standing between "ship it
+    exactly like Polly, no backend" and "needs at least a minimal relay."
+
 ## Outside sources scouted for ideas (2026-08-10) — not scoped, not built
 
 Harvey asked for a look at two outside sources of feature ideas, separate
