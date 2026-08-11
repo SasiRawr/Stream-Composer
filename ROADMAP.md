@@ -578,6 +578,94 @@ question entirely for this one case. Worth Harvey just trying voiceId
 `Justin`, engine `standard`, once the relay's DNS record and AWS key are
 in (task #34).
 
+### Chatterbox built and working end-to-end, v1.9.1 (2026-08-11)
+
+Task #44 built for real, same discipline as Kokoro. Different
+architecture, though: Chatterbox (Resemble AI, MIT code + weights) has
+no ONNX export and no Rust crate, so unlike Kokoro's Rust binary this
+runs as a Python process - a portable Python 3.12 interpreter (Astral's
+`python-build-standalone`) plus `pip install chatterbox-tts`, all
+downloaded on demand into the app's local-data directory rather than
+bundled in the installer (only the tiny `sidecar.py` script itself ships
+as a Tauri resource). Same local-HTTP-server contract as Kokoro
+(`/health`, `POST /synthesize`), just on port 5758 instead of 5757 so
+both can run simultaneously - switch between all four providers in the
+same dropdown to compare them directly, the "two builds" comparison
+Harvey originally asked for, still just one app.
+
+**Genuinely verified working**: pip install resolved and installed
+cleanly (confirmed torch 2.13.0 has real Windows wheels for this
+machine's Python), and real CPU synthesis produced genuine audio - sent
+to Harvey as proof, same as Kokoro's WAV. Two real bugs hit and fixed
+during verification, both real upstream compatibility issues, not
+mistakes in this project's own code: newest `setuptools` (84.0.0)
+dropped `pkg_resources`, breaking Chatterbox's own watermarker import
+(pinned `setuptools<81`); `torchaudio`'s newer `save()` API now defaults
+to a `torchcodec` backend that isn't installed by default (switched to
+`soundfile.write` instead, which was already in the dependency tree).
+
+**Naming correction, worth remembering**: the installed PyPI package
+(`chatterbox-tts` 0.1.7) only exposes a `ChatterboxTTS` class - no
+separate `ChatterboxTurboTTS`. "Chatterbox Turbo" referenced in earlier
+research appears to live on the project's GitHub main branch but isn't
+in the published PyPI release used here. Shipped as plain "Chatterbox,"
+not claimed as "Turbo" specifically - worth re-checking if a Turbo
+checkpoint becomes available via a stable install path later.
+
+**Real discovery made while verifying this, directly useful**:
+`ChatterboxTTS.generate()` has an `audio_prompt_path` parameter for
+**zero-shot voice cloning from a reference clip - no training needed at
+all**. This directly solves Harvey's "I want to use my own voice, and
+give it away free to everyone" ask (task #50) - completely legally clean
+since it's his own voice, and the infrastructure to do it already
+exists, just needs a real recorded sample from him.
+
+**A versioning lesson, worth remembering generally**: Harvey asked for
+this as "v1.9.0b" (a same-topic patch addition, using this project's
+letter-suffix convention). Tried it literally first - Tauri's MSI/WiX
+bundler rejected it outright: `optional pre-release identifier in app
+version must be numeric-only... for msi target` (a real, confirmed
+Windows Installer constraint, not a Tauri limitation). A numeric
+pre-release like `1.9.0-2` would technically satisfy MSI but sorts
+*before* `1.9.0` in semver ordering - backwards, since this ships on top
+of it. Shipped as a normal patch bump, **v1.9.1**, instead - same
+intent, correct ordering, no fighting the platform. Worth checking MSI
+compatibility before promising a letter-suffix version to Harvey again.
+
+### On XTTS-v2, "our own voice," and "combine all the engines" (2026-08-11)
+
+Harvey read the earlier TTS research memo and asked three follow-ups,
+each answered directly rather than deferred:
+
+1. **Coqui XTTS-v2**: a hard no, not a "grab what we can" situation -
+   its CPML license is explicitly non-commercial, and Coqui Inc. shut
+   down in Jan 2024, so there is no one left to grant a commercial
+   exception even if paid for one. This doesn't change with more
+   research; it's a closed door.
+2. **Using Harvey's own recorded voice, baked in free for everyone**:
+   completely clean - it's his own voice/likeness, no right-of-publicity
+   issue at all, unlike the earlier Justin/Tikfinity question. Directly
+   solvable using Chatterbox's `audio_prompt_path` zero-shot cloning
+   (discovered while building v1.9.1, no training needed) - task #50,
+   just needs a real recorded sample from him.
+3. **"Combine techniques from all the surveyed engines into our own
+   model"**: a real, honest research pass (Haiku) found this framing
+   doesn't quite match how these systems are actually built - you pick
+   ONE base architecture and fine-tune it; heterogeneous model merging
+   (combining genuinely different architectures) is an open research
+   problem, not a practical option for a small team. Corrected directly
+   rather than either humoring it or building nothing. **What IS real
+   and useful from that research**: if genuine fine-tuning (not just
+   zero-shot cloning) is wanted later, **Parler-TTS** and **MeloTTS**
+   are the clean candidates - both Apache 2.0/MIT with real published
+   training code (not just inference code), realistic on a single
+   consumer GPU (RTX 4090-class) with 5-40 hours of reference audio
+   depending on quality target. This is a genuinely separate, bigger
+   R&D initiative from anything shipped this session - not scheduled to
+   any version, noted here as a real future track since Harvey mentioned
+   wanting to reuse a custom model beyond this project (future games,
+   etc.).
+
 ### Multi-chat aggregation, voice cloning, and a second local-TTS survey (2026-08-11)
 
 Three follow-up research questions from the same morning, full synthesis

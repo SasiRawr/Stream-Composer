@@ -1696,6 +1696,7 @@ function renderChatOverlayProperties(item, body) {
         <option value="browser" ${!p.ttsProvider || p.ttsProvider === 'browser' ? 'selected' : ''}>Free (your Windows/browser voices)</option>
         <option value="polly" ${p.ttsProvider === 'polly' ? 'selected' : ''}>Amazon Polly (bring your own AWS key)</option>
         <option value="kokoro" ${p.ttsProvider === 'kokoro' ? 'selected' : ''}>Local (Kokoro, free &amp; offline, no key)</option>
+        <option value="chatterbox" ${p.ttsProvider === 'chatterbox' ? 'selected' : ''}>Local (Chatterbox, free &amp; offline, no key)</option>
       </select>
     </div>
     <div class="field-row">
@@ -1753,6 +1754,18 @@ function renderChatOverlayProperties(item, body) {
       </div>
       <div class="hint-warn">The local voice service is a <strong>separate process</strong> from Stream Composer Suite itself — it does NOT close when you close this app, on purpose (so it keeps working while you're live in OBS with the editor closed), and it does NOT start itself automatically. Start it here before going live, and use Stop when you're done streaming if you'd rather not leave it running in the background.</div>
     </div>
+    <div id="pf-chatterboxFields">
+      <div class="field">
+        <div id="pf-chatterboxStatus" class="hint">Checking local voice service status…</div>
+        <div class="field-row">
+          <button type="button" id="pf-chatterboxDownloadBtn">Download voice engine (~1-3GB, one-time)</button>
+          <button type="button" id="pf-chatterboxStartBtn">Start local voice service</button>
+          <button type="button" id="pf-chatterboxStopBtn">Stop</button>
+        </div>
+        <div id="pf-chatterboxProgress" class="hint" style="display:none;"></div>
+      </div>
+      <div class="hint-warn">Chatterbox is a much larger download than Kokoro (it needs a full Python + PyTorch runtime, not just one small model file) — expect several minutes even on a fast connection. Same separate-process behavior as Kokoro applies: it keeps running after you close this app, and you start/stop it manually here. Both Kokoro and Chatterbox can run at the same time if you want to A/B them directly.</div>
+    </div>
     <div class="field">
       <label><input type="checkbox" id="pf-filterCommands" ${p.filterCommands ? 'checked' : ''}> Skip messages starting with "!"</label>
     </div>
@@ -1793,11 +1806,13 @@ function renderChatOverlayProperties(item, body) {
   const browserFieldsEl = document.getElementById('pf-browserVoiceFields');
   const pollyFieldsEl = document.getElementById('pf-pollyFields');
   const kokoroFieldsEl = document.getElementById('pf-kokoroFields');
+  const chatterboxFieldsEl = document.getElementById('pf-chatterboxFields');
   function updateProviderFieldVisibility() {
     const provider = providerSelect.value;
     browserFieldsEl.style.display = provider === 'browser' ? '' : 'none';
     pollyFieldsEl.style.display = provider === 'polly' ? '' : 'none';
     kokoroFieldsEl.style.display = provider === 'kokoro' ? '' : 'none';
+    chatterboxFieldsEl.style.display = provider === 'chatterbox' ? '' : 'none';
   }
   updateProviderFieldVisibility();
   providerSelect.addEventListener('change', updateProviderFieldVisibility);
@@ -1863,6 +1878,67 @@ function renderChatOverlayProperties(item, body) {
       kokoroStatusEl.textContent = 'Local voice service stopped.';
     } catch (e) {
       kokoroStatusEl.textContent = 'Could not stop the local voice service: ' + e;
+    }
+  });
+
+  // ---- Chatterbox local voice service controls ----
+  // Same pattern as Kokoro's controls above, just a much heavier download
+  // (a portable Python + PyTorch + the model, not one small binary) - see
+  // lib.rs's Chatterbox section header comment for the full architecture.
+  const chatterboxStatusEl = document.getElementById('pf-chatterboxStatus');
+  const chatterboxProgressEl = document.getElementById('pf-chatterboxProgress');
+  const chatterboxDownloadBtn = document.getElementById('pf-chatterboxDownloadBtn');
+  const chatterboxStartBtn = document.getElementById('pf-chatterboxStartBtn');
+  const chatterboxStopBtn = document.getElementById('pf-chatterboxStopBtn');
+
+  async function refreshChatterboxStatus() {
+    try {
+      const hasModel = await invoke('chatterbox_model_status');
+      chatterboxStatusEl.textContent = hasModel
+        ? 'Voice engine downloaded. Click "Start local voice service" before going live.'
+        : 'Voice engine not downloaded yet - click Download below (one-time, ~1-3GB, several minutes).';
+      chatterboxDownloadBtn.disabled = hasModel;
+      chatterboxStartBtn.disabled = !hasModel;
+    } catch (e) {
+      chatterboxStatusEl.textContent = 'Could not check local voice service status: ' + e;
+    }
+  }
+  refreshChatterboxStatus();
+
+  chatterboxDownloadBtn.addEventListener('click', async () => {
+    chatterboxDownloadBtn.disabled = true;
+    chatterboxProgressEl.style.display = '';
+    chatterboxProgressEl.textContent = 'Starting download…';
+    const unlisten = await window.__TAURI__.event.listen('chatterbox-download-progress', (event) => {
+      chatterboxProgressEl.textContent = event.payload.stage;
+    });
+    try {
+      await invoke('chatterbox_download_model');
+      chatterboxProgressEl.textContent = 'Download complete.';
+    } catch (e) {
+      chatterboxProgressEl.textContent = 'Download failed: ' + e;
+      chatterboxDownloadBtn.disabled = false;
+    } finally {
+      unlisten();
+      await refreshChatterboxStatus();
+    }
+  });
+
+  chatterboxStartBtn.addEventListener('click', async () => {
+    try {
+      await invoke('chatterbox_start');
+      chatterboxStatusEl.textContent = 'Local voice service is running on 127.0.0.1:5758. First request after starting may be slow while the model loads.';
+    } catch (e) {
+      chatterboxStatusEl.textContent = 'Could not start the local voice service: ' + e;
+    }
+  });
+
+  chatterboxStopBtn.addEventListener('click', async () => {
+    try {
+      await invoke('chatterbox_stop');
+      chatterboxStatusEl.textContent = 'Local voice service stopped.';
+    } catch (e) {
+      chatterboxStatusEl.textContent = 'Could not stop the local voice service: ' + e;
     }
   });
 

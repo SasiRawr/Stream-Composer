@@ -289,6 +289,203 @@ fn kokoro_stop() -> Result<(), String> {
     Ok(())
 }
 
+// ============================================================================
+// CHATTERBOX LOCAL TTS (task #44, v1.9.0-b) — a fourth Chat + TTS Overlay
+// voice provider, alongside Kokoro. Same local-HTTP-server contract as
+// kokoro-sidecar (GET /health, POST /synthesize), running on port 5758
+// (Kokoro uses 5757) so both can run at once for direct comparison.
+//
+// WHY PYTHON, NOT A TAURI externalBin SIDECAR LIKE KOKORO: Chatterbox has
+// no ONNX export and no Rust crate - real feasibility-checked before
+// building this (2026-08-11): pip install works, real CPU synthesis
+// produces genuine audio. The real cost is size: PyTorch + this
+// package's dependency tree is ~1-3GB, versus Kokoro's ~66MB binary.
+// Harvey explicitly approved this tradeoff ("build it anyway, opt-in
+// heavy download, same pattern as Kokoro's model").
+//
+// Unlike Kokoro's binary (which MUST be bundled for externalBin to find
+// it at build time), NONE of this needs to be bundled in the installer -
+// the portable Python interpreter, all pip packages, and the model
+// weights are ALL downloaded on demand into the app's local-data
+// directory. Only the tiny sidecar.py script itself
+// (`resources/chatterbox_sidecar.py`, a few KB) is bundled, via Tauri's
+// plain `resources` mechanism (not externalBin - this isn't a prebuilt
+// binary, just a text file the app writes into place at runtime).
+//
+// Spawned via plain `std::process::Command`, not tauri-plugin-shell's
+// sidecar API - that mechanism is specifically for registered
+// externalBin binaries; the portable Python interpreter lives in
+// app-local-data instead, so there's nothing to "register" ahead of
+// time. Same DETACHED lifecycle reasoning as Kokoro either way - see
+// that section's header comment above.
+// ============================================================================
+
+const CHATTERBOX_PORT: u16 = 5758;
+const CHATTERBOX_PYTHON_URL: &str = "https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.12.13%2B20260807-x86_64-pc-windows-msvc-install_only.tar.gz";
+
+fn chatterbox_env_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("chatterbox-env");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn chatterbox_python_exe(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(chatterbox_env_dir(app)?.join("python").join("python.exe"))
+}
+
+/// Whether the portable Python + chatterbox-tts + model weights are all
+/// already downloaded and installed - checked via a marker file written
+/// only after every step of `chatterbox_download_model` succeeds, not by
+/// re-verifying every package on every check.
+#[tauri::command]
+fn chatterbox_model_status(app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(chatterbox_env_dir(&app)?.join(".installed").is_file())
+}
+
+/// Downloads a portable Python 3.12 interpreter (~46MB), pip-installs
+/// chatterbox-tts (~1-3GB - PyTorch and its own dependency tree, the
+/// real cost of this provider), then pre-downloads the model weights so
+/// the first real chat message doesn't eat that delay live. Emits
+/// `chatterbox-download-progress` events with a `{stage}` string so the
+/// properties panel can show which of the (few, coarse-grained - pip
+/// doesn't expose clean percentage progress) steps is running, rather
+/// than a spinner with zero feedback for what's a genuinely slow,
+/// multi-minute download.
+#[tauri::command]
+async fn chatterbox_download_model(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = chatterbox_env_dir(&app)?;
+    let python_dir = dir.join("python");
+    let python_exe = chatterbox_python_exe(&app)?;
+
+    if !python_exe.is_file() {
+        let _ = app.emit("chatterbox-download-progress", serde_json::json!({ "stage": "Downloading Python runtime" }));
+        let archive_path = dir.join("python-portable.tar.gz");
+        let url = CHATTERBOX_PYTHON_URL.to_string();
+        let archive_path2 = archive_path.clone();
+        tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+            let response = reqwest::blocking::get(&url).map_err(|e| e.to_string())?;
+            if !response.status().is_success() {
+                return Err(format!("Python download failed: HTTP {}", response.status()));
+            }
+            let bytes = response.bytes().map_err(|e| e.to_string())?;
+            std::fs::write(&archive_path2, &bytes).map_err(|e| e.to_string())?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+
+        let _ = app.emit("chatterbox-download-progress", serde_json::json!({ "stage": "Extracting Python runtime" }));
+        std::fs::create_dir_all(&python_dir).map_err(|e| e.to_string())?;
+        let status = std::process::Command::new("tar")
+            .args(["-xzf", &archive_path.to_string_lossy(), "-C", &dir.to_string_lossy(), "--strip-components=1"])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err("Failed to extract the portable Python runtime".into());
+        }
+        let _ = std::fs::remove_file(&archive_path);
+    }
+
+    let _ = app.emit("chatterbox-download-progress", serde_json::json!({ "stage": "Installing chatterbox-tts (this is the big one - several minutes, ~1-3GB)" }));
+    let python_exe2 = python_exe.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let status = std::process::Command::new(&python_exe2)
+            .args(["-m", "pip", "install", "--no-warn-script-location", "chatterbox-tts", "setuptools<81"])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err("pip install chatterbox-tts failed".into());
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let _ = app.emit("chatterbox-download-progress", serde_json::json!({ "stage": "Downloading voice model weights" }));
+    let python_exe3 = python_exe.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let status = std::process::Command::new(&python_exe3)
+            .args(["-c", "from chatterbox.tts import ChatterboxTTS; ChatterboxTTS.from_pretrained(device='cpu')"])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err("Model weight download failed".into());
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    std::fs::write(dir.join(".installed"), b"ok").map_err(|e| e.to_string())?;
+    let _ = app.emit("chatterbox-download-progress", serde_json::json!({ "stage": "Done" }));
+    Ok(())
+}
+
+/// Spawns the Chatterbox sidecar as a DETACHED process (see this
+/// section's header comment) listening on 127.0.0.1:5758. Copies the
+/// bundled `resources/chatterbox_sidecar.py` into the same app-local-data
+/// directory the Python environment lives in (simplest way to give the
+/// portable interpreter a real filesystem path to run, since Tauri's
+/// resource directory and the writable app-data directory aren't always
+/// the same location).
+#[tauri::command]
+fn chatterbox_start(app: tauri::AppHandle) -> Result<u16, String> {
+    use std::os::windows::process::CommandExt;
+
+    let dir = chatterbox_env_dir(&app)?;
+    let python_exe = chatterbox_python_exe(&app)?;
+    if !python_exe.is_file() {
+        return Err("Chatterbox isn't downloaded yet".into());
+    }
+
+    let resource_script = app
+        .path()
+        .resolve("resources/chatterbox_sidecar.py", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| e.to_string())?;
+    let script_path = dir.join("chatterbox_sidecar.py");
+    std::fs::copy(&resource_script, &script_path).map_err(|e| e.to_string())?;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    const DETACHED_PROCESS: u32 = 0x00000008;
+    std::process::Command::new(&python_exe)
+        .arg(&script_path)
+        .arg(CHATTERBOX_PORT.to_string())
+        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    Ok(CHATTERBOX_PORT)
+}
+
+/// Best-effort stop, same blunt "kill anything matching this" approach
+/// as kokoro_stop - this process is a plain python.exe though, not a
+/// uniquely-named binary, so kill by matching the script path in the
+/// command line instead of by process name (which would also kill any
+/// unrelated python.exe the user happens to have running). Uses
+/// PowerShell's Get-CimInstance rather than `wmic` - wmic is deprecated/
+/// being removed from modern Windows, CIM is the maintained replacement.
+#[tauri::command]
+fn chatterbox_stop(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let script_path = chatterbox_env_dir(&app)?.join("chatterbox_sidecar.py");
+        let needle = script_path.to_string_lossy().replace('\'', "''");
+        let ps_script = format!(
+            "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object {{ $_.CommandLine -like '*{}*' }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}",
+            needle
+        );
+        std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+            .output()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -310,6 +507,10 @@ pub fn run() {
             kokoro_download_model,
             kokoro_start,
             kokoro_stop,
+            chatterbox_model_status,
+            chatterbox_download_model,
+            chatterbox_start,
+            chatterbox_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

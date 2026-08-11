@@ -75,6 +75,7 @@ export function buildChatOverlayScript(instanceId, props) {
   const POLLY_ENGINE = ${JSON.stringify(props.pollyEngine || 'neural')};
   const KOKORO_VOICE = ${JSON.stringify(props.kokoroVoice || 'af_heart')};
   const KOKORO_PORT = 5757;
+  const CHATTERBOX_PORT = 5758;
   const FILTER_COMMANDS = ${JSON.stringify(!!props.filterCommands)};
   const FILTER_EMOTE_ONLY = ${JSON.stringify(!!props.filterEmoteOnly)};
   const MAX_VISIBLE = ${JSON.stringify(props.maxVisibleMessages ?? 3)};
@@ -203,6 +204,7 @@ export function buildChatOverlayScript(instanceId, props) {
   function speakNext() {
     if (TTS_PROVIDER === 'polly') { speakNextPolly(); return; }
     if (TTS_PROVIDER === 'kokoro') { speakNextKokoro(); return; }
+    if (TTS_PROVIDER === 'chatterbox') { speakNextChatterbox(); return; }
     speakNextBrowser();
   }
 
@@ -347,6 +349,44 @@ export function buildChatOverlayScript(instanceId, props) {
       if (!kokoroWarnedOnce) {
         kokoroWarnedOnce = true;
         console.warn('Chat + TTS Overlay: Kokoro selected as the TTS provider but the local voice service isn\\'t reachable on 127.0.0.1:' + KOKORO_PORT + ' - start it from Stream Composer Suite\\'s properties panel before going live.', e);
+      }
+      speaking = false;
+      speakNext();
+    }
+  }
+
+  // ---- Chatterbox TTS (local, free, no key/relay - task #44) ----
+  // Same contract as Kokoro above, just a different local port (this
+  // provider's sidecar is a Python process, not a Rust binary - see
+  // src-tauri/src/lib.rs's Chatterbox section for why). No voice
+  // parameter - the installed chatterbox-tts package version used here
+  // only exposes its default voice, not a named-voice picker like Kokoro.
+  let chatterboxAudioEl = null;
+  let chatterboxWarnedOnce = false;
+  async function speakNextChatterbox() {
+    if (speaking || ttsQueue.length === 0) return;
+    speaking = true;
+    const text = ttsQueue.shift();
+    try {
+      const res = await fetch('http://127.0.0.1:' + CHATTERBOX_PORT + '/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text }),
+      });
+      if (!res.ok) throw new Error('Chatterbox sidecar returned ' + res.status);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      if (!chatterboxAudioEl) chatterboxAudioEl = new Audio();
+      chatterboxAudioEl.src = objectUrl;
+      chatterboxAudioEl.volume = TTS_VOLUME;
+      chatterboxAudioEl.playbackRate = TTS_RATE;
+      chatterboxAudioEl.onended = function () { URL.revokeObjectURL(objectUrl); speaking = false; speakNext(); };
+      chatterboxAudioEl.onerror = function () { URL.revokeObjectURL(objectUrl); speaking = false; speakNext(); };
+      await chatterboxAudioEl.play();
+    } catch (e) {
+      if (!chatterboxWarnedOnce) {
+        chatterboxWarnedOnce = true;
+        console.warn('Chat + TTS Overlay: Chatterbox selected as the TTS provider but the local voice service isn\\'t reachable on 127.0.0.1:' + CHATTERBOX_PORT + ' - start it from Stream Composer Suite\\'s properties panel before going live.', e);
       }
       speaking = false;
       speakNext();

@@ -163,6 +163,19 @@ const tiktokNoKeyScript = buildChatOverlayScript('chat-item9-8', {
 });
 assert(!tiktokNoKeyScript.includes('connectTikTok("someTikTokUser"'), 'TikTok enabled without an API key does not get a connect call, even with a channel name set');
 
+// ---- Chatterbox provider: local, no key/relay, second local port from Kokoro ----
+const chatterboxScript = buildChatOverlayScript('chat-item13-12', {
+  ...baseProps,
+  ttsProvider: 'chatterbox',
+});
+assert(chatterboxScript.includes('TTS_PROVIDER = "chatterbox"'), 'the configured TTS provider is baked into the output');
+assert(chatterboxScript.includes('speakNextChatterbox'), 'the Chatterbox speak path is present when Chatterbox is the configured provider');
+assert(chatterboxScript.includes("'http://127.0.0.1:' + CHATTERBOX_PORT + '/synthesize'"), 'Chatterbox requests go to localhost, never a remote host');
+assert(chatterboxScript.includes('CHATTERBOX_PORT = 5758'), 'Chatterbox uses a different local port than Kokoro (5757), so both can run at once');
+let chatterboxSyntaxError = null;
+try { new Function(chatterboxScript); } catch (err) { chatterboxSyntaxError = err; }
+assert(chatterboxSyntaxError === null, `Chatterbox-provider script is syntactically valid JS (got: ${chatterboxSyntaxError && chatterboxSyntaxError.message})`);
+
 // ---- Multi-chat: two platforms enabled at once both get connect calls ----
 const multiChatScript = buildChatOverlayScript('chat-item10-9', {
   ...baseProps,

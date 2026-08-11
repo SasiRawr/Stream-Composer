@@ -4,6 +4,27 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.9.1 — 2026-08-11 (pre-release, pending verification)
+
+### Added
+- **Chat + TTS Overlay: Chatterbox local voice option** — a fourth TTS
+  provider, alongside the free browser voice, Amazon Polly, and Kokoro.
+  Also fully offline, no key or relay. Runs a different local voice
+  service than Kokoro (port 5758 vs. 5757), so both can run at the same
+  time — switch between them in the Voice Source dropdown to compare
+  directly. **Bigger download than Kokoro**: needs a full Python +
+  PyTorch runtime (~1-3GB, downloaded on demand, not part of the
+  installer itself), versus Kokoro's single small model file. Same
+  Start/Stop, separate-process-that-survives-editor-close behavior as
+  Kokoro.
+
+### Verification note
+Same discipline as Kokoro's v1.9.0 release: the actual voice-generation
+engine was tested standalone before being wired in — a real pip install
+and real CPU synthesis produced genuine audio (confirmed valid WAV
+output). The in-app Download/Start/Stop button flow has not been
+click-tested, same native-window limitation as every prior version.
+
 ## v1.9.0 — 2026-08-11 (pre-release, pending verification)
 
 ### Added
