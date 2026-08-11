@@ -1,3 +1,9 @@
 # Local test builds for Harvey to try out - never committed, these are
 # just installers/exes staged for manual testing, not source.
 /Tests/
+
+# Local archive of every shipped version's installers - never committed.
+/Modules/
+
+# Local research drafts (later published as Artifacts, not repo content).
+/Research/
