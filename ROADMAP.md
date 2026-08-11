@@ -20,6 +20,18 @@ If a v1.x.0 module needs more patch iterations than a single digit
 comfortably covers, letter suffixes are fine (`v1.1.1-a`, `-b`, ...) —
 not expected to actually happen, just the agreed fallback if it does.
 
+**Real constraint found 2026-08-11**: letter-suffix versions are fine
+for git tags and GitHub release names, but **not valid as the actual
+`tauri.conf.json`/`package.json` version field once an MSI bundle is
+involved** — Windows Installer requires pre-release identifiers to be
+numeric-only (confirmed via a real build failure:
+`optional pre-release identifier in app version must be numeric-only...
+for msi target`). A numeric pre-release (`1.9.0-2`) technically passes
+MSI but sorts *before* the base version in semver — backwards for
+something shipping on top of it. When this comes up, ship a normal
+patch bump instead (`v1.9.1`, not `v1.9.0-b`) — same intent, correct
+ordering, no fighting the platform.
+
 ## Release process (agreed 2026-08-06)
 
 Every version gets built, tested (automated), committed, and pushed to
