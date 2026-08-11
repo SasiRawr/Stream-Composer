@@ -274,6 +274,95 @@ release.
     question above) — this is the one thing standing between "ship it
     exactly like Polly, no backend" and "needs at least a minimal relay."
 
+## Harvey's decisions on the backend-relay question, plus a batch of new
+## direction (2026-08-11 morning, after testing the overnight builds)
+
+Harvey read the game-detector/Polly/TikTok status update and made several
+real calls, plus set the sequencing for everything up to v2.0.0.
+
+- **`CameraDetection` — dropped as a build target, but the underlying
+  idea isn't.** "Lets 86 the camera detection for now" — confirmed. But
+  he's interested in the face/eye-tracking technique itself as its own,
+  much bigger future project: webcam-based eye/gaze tracking, comparable
+  to what dedicated hardware (Tobii Eye Tracker, popular with Star
+  Citizen players) does today, using a regular webcam instead of special
+  hardware. Explicitly "another project for sure" — not scoped, not
+  started, logged as task #35. Likely shares underlying computer-vision
+  groundwork (facial landmark detection) with the PNGTuber/VTuber
+  rigging research idea below — worth researching together later rather
+  than as two unrelated efforts.
+- **Polly hosting — greenlit, real infrastructure decision made.**
+  Harvey will create the AWS account + a Polly-scoped IAM key himself
+  (per the setup guide) and wants **us to host the actual relay
+  ourselves in a Docker container on his existing server
+  infrastructure**, so individual users never need their own AWS
+  account. This resolves the "shared key is unsafe" objection from
+  earlier the right way: instead of baking the raw AWS key into the app
+  (unbounded blast radius if leaked), the app gets a **relay API key**
+  baked in instead — the relay itself holds the real AWS key server-side
+  and enforces real rate limits on the relay key. If the baked relay key
+  ever gets extracted from the public app/releases, the worst case is
+  bounded by the rate limit, not an open AWS bill. Task #34 tracks the
+  build. **Deployment target (which of Harvey's servers) is his call,
+  not something to pick unprompted** — this session has no confirmed
+  remote access to his production infrastructure.
+- **TikTok — same relay treatment, "if possible."** Once the Euler
+  Stream CORS question (above) is answered, if a relay turns out to be
+  needed at all, it should follow the same pattern as the Polly relay —
+  a small proxy for the one signing HTTP call, same rate-limiting
+  discipline, plausibly the same Docker service exposing two endpoints
+  rather than two separate deployments.
+- **TikTok join/leave — simpler requirement than originally scoped.**
+  Harvey doesn't need automatic detection/filtering complexity — he just
+  doesn't want TTS reading "X joined" / "X left" messages aloud at all.
+  Instead: **a short rising tone/ping for someone joining, a short
+  falling tone/ping for someone leaving** — a lightweight, non-intrusive
+  audio cue instead of either silence or spoken text. Simpler to build
+  than full filtering logic once the event stream is actually connected
+  (per the feasibility research, `WebcastMemberMessage` covers joins —
+  **whether TikTok's event stream distinguishes actual "leave" events at
+  all is still unconfirmed and needs checking when this gets built**, not
+  assumed to exist just because Harvey asked for it).
+- **MixItUp — greenlit for feature-inspiration research.** Not code to
+  copy (it's someone else's actively-maintained product, see the
+  FabioZumbi12 fork-checking note above) — a legitimate "what features
+  does this well-regarded all-in-one streaming tool have that we could
+  build our own original take on" research pass. Not scheduled yet.
+- **The stated product vision, worth remembering for every future scope
+  decision**: Harvey wants Stream Composer Suite to become a genuine
+  catch-all replacement for the roughly 15 different single-purpose
+  streaming tools a streamer currently has to juggle, not just add
+  features piecemeal. This is the actual "why" behind chasing
+  FabioZumbi12's tools, MixItUp's feature set, TikTok/Polly, etc. — they
+  all serve this one thesis.
+- **Sequencing, explicitly set by Harvey**: keep building features and
+  ironing out what's already shipped (the ongoing v1.x.0 testing-pass
+  cycle) — **then, before v2.0.0 specifically, the TTS/voice work and
+  the hosted-relay infrastructure need to be fully ironed out** — that's
+  a hard prerequisite Harvey named, not just "nice to have done by
+  then." Only after that does the v2.0.0 "combine again" merge (see its
+  own section below) make sense to pursue.
+- **New idea: a companion web app for voice/config selection**, still
+  just a question at this point, not a decision. Harvey's framing: once
+  people have real optionality (multiple TTS voices, maybe multiple
+  relay-backed features), does that configuration live purely in the
+  desktop app, or does it need something like a "login style" web
+  dashboard for configuration/editing — the same pattern already used
+  for the separate Discord Server Builder project (`Working\
+  Discord-Server-Builder\`). Worth a real design conversation once the
+  relay infrastructure exists and there's an actual multi-option surface
+  to configure — not scoped yet.
+- **PNGTuber/VTuber interest, reiterated with more detail.** More
+  reference screenshots in `_examples\` show PNGTuber/VTuber setups with
+  visibly more interaction/detail than earlier examples. Harvey's
+  instinct is there's a Python-script-based rigging/webcam-tracking
+  approach behind a lot of these — matches the existing "VTuber features
+  explicitly not scheduled" standing note elsewhere in this doc, still
+  research-only for now, not started. Worth exploring together with the
+  eye-tracking idea above, given both are fundamentally "webcam →
+  detect face/features → drive something" problems that could share
+  underlying computer-vision tooling.
+
 ## Outside sources scouted for ideas (2026-08-10) — not scoped, not built
 
 Harvey asked for a look at two outside sources of feature ideas, separate
