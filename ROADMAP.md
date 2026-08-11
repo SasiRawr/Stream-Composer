@@ -332,24 +332,30 @@ real calls, plus set the sequencing for everything up to v2.0.0.
   Verified reachable inside the Docker network (`/health` responds
   correctly). A real relay key was generated and staged server-side.
 
-  **DNS record confirmed live, 2026-08-11** — `tts-relay.thenerdybox.com`
-  now resolves to `64.184.103.252` (verified via `nslookup`), the
-  original blocker. **Harvey has also completed the AWS account + IAM
-  user setup** (scoped to `polly:SynthesizeSpeech` only, per the setup
-  guide: https://claude.ai/code/artifact/06d3257b-9bd7-4bd8-b309-5af45f672702)
-  and is providing the real access key/secret. Remaining work to actually
-  close task #34: write the real credentials into the relay's `.env` on
-  CT101, restart the container, verify a real Polly request round-trips
-  through it end-to-end, and decide whether/how the desktop app's Chat +
-  TTS Overlay should offer a "use the relay" mode (a relay key, no AWS
-  account needed) alongside the existing bring-your-own-AWS-key mode —
-  not yet decided, this is the "bake it into the app" step Harvey asked
-  about.
+  **Fully live and verified, 2026-08-11.** DNS resolved, Harvey
+  completed the AWS account + IAM setup (scoped to
+  `polly:SynthesizeSpeech` only) and provided the real key/secret (via a
+  CSV in `_examples/`, written directly into the relay's `.env` on
+  CT101, never echoed back in chat). **Real deployment mistake caught
+  and fixed in the same pass**: the first restart used `docker compose
+  up` (the local-dev `docker-compose.yml`, no Traefik labels/`edge`
+  network) instead of `docker compose -f docker-compose.prod.yml up` —
+  container came up healthy but wasn't reachable over HTTPS at all
+  (`SEC_E_UNTRUSTED_ROOT`, no cert since Traefik never saw it to
+  provision one). Redeployed with the correct prod compose file, back on
+  the `edge` network, real cert provisioned. **Real end-to-end
+  verification**: `POST https://tts-relay.thenerdybox.com/polly/synthesize`
+  with the real relay key returned HTTP 200 and genuine Polly MP3 audio
+  (confirmed valid ID3/Lavf header, sent to Harvey as proof). Task #34
+  closed for real, not just unblocked.
 
-  Still remaining after that: the TikTok relay endpoint (waiting on the
-  Euler Stream CORS question below), and the desktop app's own
-  client-side "relay" TTS provider option in `chat-tts-engine.js` (needs
-  the real relay URL working end-to-end first, not started).
+  **Still open, a real product decision, not yet made**: whether/how the
+  desktop app's Chat + TTS Overlay should offer a "use the relay" mode
+  (a relay key, no AWS account needed) alongside the existing
+  bring-your-own-AWS-key mode — this is the "bake it into the app" step
+  Harvey originally asked about, genuinely separate from getting the
+  relay itself working. Also still open: the TikTok relay endpoint
+  (waiting on the Euler Stream CORS question below).
 - **TikTok — same relay treatment, "if possible."** Once the Euler
   Stream CORS question (above) is answered, if a relay turns out to be
   needed at all, it should follow the same pattern as the Polly relay —
@@ -677,6 +683,72 @@ each answered directly rather than deferred:
    any version, noted here as a real future track since Harvey mentioned
    wanting to reuse a custom model beyond this project (future games,
    etc.).
+
+**Follow-up, same day, later**: Harvey pushed back on both #1 and #3
+with real, fair questions rather than just accepting the answers -
+worth recording the fuller exchange since it changed nothing but
+sharpened the reasoning:
+
+- **XTTS-v2, re-examined properly** (dispatched a dedicated Haiku
+  research pass rather than repeating the earlier one-line answer):
+  confirmed genuinely closed, not just "closed for now." No
+  acquisition/successor took over Coqui's IP when it shut down - the
+  copyright itself doesn't lapse just because the company did, and
+  likely sits with the original founders/investors, who could still
+  enforce it. CPML has **no commercial-licensing contact or process at
+  all** - there's no one to even ask. "Orphaned work" is a real legal
+  concept but does NOT mean "safe to use" - it means "hard to get
+  permission from," still fully restricted. Real timeline if waiting for
+  copyright expiration: decades (~2119). The genuinely useful finding:
+  Kokoro and Chatterbox (both already shipped, v1.9.0/v1.9.1) exist
+  specifically *because* other teams hit this same XTTS-v2 licensing
+  wall - not a consolation prize, a better-positioned alternative.
+- **"Frankenstein's monster" - combine ideas from all the engines**:
+  Harvey's second framing ("take the best/most functional parts...
+  build something out of the scraps and ashes") was fairer than the
+  first ask and deserved a more careful answer than a flat no.
+  Distinguished clearly: copying trained WEIGHTS across architectures
+  still isn't real (confirmed again, unchanged from the earlier
+  research). But building something new *informed by* studying multiple
+  open projects' published techniques and code - the same way Kokoro
+  itself is openly built on ideas from prior research like StyleTTS2 -
+  is completely legitimate and is literally how this field normally
+  advances. Reframed as: pick one clean base (Parler-TTS or MeloTTS,
+  both already identified as the right candidates), fine-tune it,
+  informed by everything learned across this whole research arc. Same
+  "genuinely separate R&D track, not scheduled" conclusion as before,
+  just with the framing corrected rather than dismissed.
+
+### Remaining v1.x.0 series items, scoped (2026-08-11)
+
+Harvey asked to close out whatever's left before v2.0.0 planning starts
+in earnest. All three remaining items from the original 5-item v1.x.0
+list (see that section below) now have real scoping, not just a
+one-line placeholder - none built yet, each small enough to pick up
+directly next session:
+
+- **Task #45, asset library** (smallest of the three): a "Save to
+  Library" action on any canvas item, storing `{moduleType, props}`
+  (not position - that's per-project) into a persisted `library.json`
+  in the app's local-data dir, same directory pattern already used for
+  the Kokoro/Chatterbox model storage. A simple flat list to start, no
+  folders/tags needed until it becomes unwieldy.
+- **Task #46, template personalization**: reuses the Starter Kit's
+  existing brand-color/gradient infrastructure entirely - a
+  customization step when applying a template (pick 1-2 accent colors,
+  override default placeholder text) before final placement. No new
+  engine/rendering code, purely a wizard-step UI addition.
+- **Task #47, OBS WebSocket automation**: real feasibility confirmed -
+  `obws` is an actively-maintained Rust crate (0.15.0, updated March
+  2026) for obs-websocket v5+, a clean integration path same as
+  kokoro-en/chatterbox-tts were for the TTS work. Needs a new app-level
+  "OBS Connection" settings surface (this app's first true app-level
+  settings, not per-project) for host/port/password. Real open caveat
+  tied to task #48's finding: obs-websocket may not expose a true
+  "refresh cache" call the way this feature would ideally want - only
+  URL updates, which OBS usually reloads for automatically but isn't
+  quite the same guarantee. Verify the exact obs-websocket v5 request
+  types before writing code, don't overclaim what gets fixed.
 
 ### Multi-chat aggregation, voice cloning, and a second local-TTS survey (2026-08-11)
 
