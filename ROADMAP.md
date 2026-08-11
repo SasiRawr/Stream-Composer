@@ -529,14 +529,55 @@ for their usefulness and what good they do for users."**
   floated as something to think about, explicitly "not sure if it's
   possible or worth it to integrate into our current app." Lower
   priority, no action yet.
-- **Downloadable TTS voice models — reprioritized upward** — Harvey
-  confirmed `StreamElements-TwitchChat` is redundant with what's already
-  shipped (matches the earlier triage finding). Said he wants to work on
-  "the additional TTS voices too if possible" — but hasn't actually sent
-  the voice names/screenshots yet (he said he'd bring those "tomorrow,"
-  in an earlier message tonight). Still blocked on that actual data, not
-  on priority — ready to move the moment he sends it. Remember the
-  rebrand rule for whatever comes of this.
+- **Downloadable TTS voice models — screenshots received and reviewed
+  (2026-08-10 night, following power outage)**. Harvey sent 5 screenshots
+  (`_examples/SE Voices.png`, `voices1-4.png`) comparing StreamElements'
+  overlay TTS picker against Tikfinity's credit-gated voice list, plus a
+  link to one of his own StreamElements overlay configs as a "this is
+  what I'd want to help beginners build" reference (not fetchable —
+  tied to his SE account session, no public/anonymous view).
+  **What the screenshots actually show, name-matched against known TTS
+  vendor catalogs**:
+  - `SE Voices.png` — StreamElements' plain "TTS settings" panel (not the
+    "AI" tab), free, showing Kimberly/Kendra/Justin/Joey/Joanna. These
+    names, plus the larger set in `voices1.png`/`voices4.png`
+    (Matthew/Ivy/Salli/Ruth/Stephen/Vera/Danielle/Gregory/Kevin/etc.),
+    match Amazon Polly's standard/neural US English voice catalog almost
+    exactly. Polly is an AWS cloud TTS API — SE is almost certainly
+    eating that AWS cost themselves as a bundled perk, not exposing
+    something free-to-run-anywhere. AWS does have a genuine free tier
+    (5M characters/month for a new account's first 12 months, cheap
+    per-character after), so **the exact same voices are legitimately
+    obtainable with an AWS account** — just not literally zero-cost
+    forever, and not something we can bundle without either eating the
+    AWS bill ourselves across all users or asking each streamer to
+    supply their own AWS key.
+  - `voices2.png`/`voices3.png` (the "AI" tab, gated behind SE's own "AI
+    Voice Credits" — same banner shown on-screen) — SpongeBob, Patrick
+    Star, Whisper, Tentacle, Singer, Joe Biden, Donald Trump, Alpha,
+    Breaker, Breeze, Inferno, Leader, Mentor, Micro, Luna, Tiffany. These
+    do **not** match Polly's catalog at all — this looks like a separate
+    licensed/custom voice-clone vendor, and **this is the part
+    StreamElements ALSO charges credits for, not just Tikfinity.**
+    Correction to the "Tikfinity ripoff" read from earlier tonight: only
+    the ~5-voice legacy Polly-style set is actually free on SE; the
+    character/novelty catalog is gated on both platforms.
+  - Character voices modeled on real people (Trump, Biden) or copyrighted
+    characters (SpongeBob, Patrick Star) carry real right-of-publicity
+    and IP exposure if reproduced by name/likeness — flagging this now,
+    before any build time goes toward chasing them, not after.
+  **Net read**: the free-and-legitimately-buildable win here is what's
+  already shipped — browser-native `speechSynthesis` (OS voices, zero
+  cost, zero account, forever) — possibly with a picker UX polish pass
+  (search box, per-voice Test button, matching the SE/Tikfinity list
+  feel Harvey pointed at). A real *quality* upgrade to get the literal
+  Polly names/voices would mean a bring-your-own-AWS-key Amazon Polly
+  connector, opt-in, mirroring the already-decided YouTube
+  bring-your-own-key pattern for Chat + TTS Overlay — not started, real
+  scope (AWS SDK calls, credential storage, needs Harvey's live AWS
+  account to verify audio output). The character/novelty voice catalog
+  is a pass, not a build target, for the legal reasons above. Remember
+  the rebrand rule for anything that does move forward.
 - **`CameraDetection` — Harvey's own theory of what it does**: he thinks
   it's meant to alert if the camera/audio/game capture stops working —
   webcam frozen, audio not detected, game capture not detecting. Said
