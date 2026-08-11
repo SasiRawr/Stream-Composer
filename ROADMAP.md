@@ -719,6 +719,24 @@ sharpened the reasoning:
   "genuinely separate R&D track, not scheduled" conclusion as before,
   just with the framing corrected rather than dismissed.
 
+**"Frankenvoice" made real, same day, later still**: Harvey found and
+emailed a real contact for XTTS-v2 commercial permission, waiting to
+hear back — the right move, no reason to build around it further while
+that's pending. Separately, a genuinely useful license clarification
+was found (checked both license files directly, not assumed): **CPML
+only covers the specific trained XTTS-v2 checkpoint** (hosted on
+HuggingFace) — **the Coqui training/inference toolkit's actual code is
+MPL-2.0**, a clean, permissive, commercial-friendly license, completely
+separate and unrestricted. This means the architecture/training
+pipeline itself is usable right now, no permission needed — only
+fine-tuning *from Coqui's specific released weights* (their actual
+trained numbers) stays gated on that email. Training a wholly new model
+using the open MPL-2.0 codebase as the recipe, on different (self-owned
+or otherwise clean) data, is a different, already-legal act. Harvey
+named this initiative **"Frankenvoice"** — tracked as task #51, an
+explicit backburner/soon item, not urgent, not scoped to this project
+alone (he wants it reusable in future projects/games too).
+
 ### Remaining v1.x.0 series items, scoped (2026-08-11)
 
 Harvey asked to close out whatever's left before v2.0.0 planning starts
