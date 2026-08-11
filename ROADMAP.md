@@ -303,9 +303,36 @@ real calls, plus set the sequencing for everything up to v2.0.0.
   and enforces real rate limits on the relay key. If the baked relay key
   ever gets extracted from the public app/releases, the worst case is
   bounded by the rate limit, not an open AWS bill. Task #34 tracks the
-  build. **Deployment target (which of Harvey's servers) is his call,
-  not something to pick unprompted** — this session has no confirmed
-  remote access to his production infrastructure.
+  build.
+
+  **Built and deployed, 2026-08-11.** Harvey delegated the host choice
+  ("whichever will handle this function better... your judgement").
+  Picked CT101 (`dockerhost`/`docket-host`) over the Pi — it's the real
+  Xeon D-2143IT server (8C/16T, 48GB RAM) already running as the general
+  Docker host with Traefik + Portainer configured; the Pi is reserved for
+  Pi-hole and Harvey's stated future NAS repurposing, not more app
+  hosting. Deployed to `~/tts-relay/` on the host (not `/opt/` — that's
+  root-owned, no passwordless sudo configured, didn't ask for one or try
+  to work around it). Container built and running, joined the existing
+  `edge` Traefik network, router configured for
+  `tts-relay.thenerdybox.com` matching the same HTTP-01/Let's Encrypt
+  pattern already live for `auth.`/`gamebox.`/etc. on the same host.
+  Verified reachable inside the Docker network (`/health` responds
+  correctly). A real relay key was generated and staged server-side.
+
+  **One remaining blocker, confirmed directly from Traefik's own logs**:
+  no DNS record exists yet for `tts-relay.thenerdybox.com` (confirmed via
+  `nslookup` — NXDOMAIN — and Traefik's ACME HTTP-01 challenge failing
+  for the identical reason). Needs an A record wherever `thenerdybox.com`
+  DNS is managed, pointing at the same IP as `auth.thenerdybox.com`
+  (`64.184.103.252`). This session has no DNS provider access — genuinely
+  needs Harvey, not something to guess around.
+
+  Still remaining after DNS: Harvey's real AWS credentials (still empty
+  placeholders server-side), the TikTok relay endpoint (waiting on the
+  Euler Stream CORS question below), and the desktop app's own
+  client-side "relay" TTS provider option in `chat-tts-engine.js` (needs
+  the real relay URL working end-to-end first, not started).
 - **TikTok — same relay treatment, "if possible."** Once the Euler
   Stream CORS question (above) is answered, if a relay turns out to be
   needed at all, it should follow the same pattern as the Polly relay —
@@ -362,6 +389,117 @@ real calls, plus set the sequencing for everything up to v2.0.0.
   eye-tracking idea above, given both are fundamentally "webcam →
   detect face/features → drive something" problems that could share
   underlying computer-vision tooling.
+
+## Three research passes, same day (2026-08-11) — Harvey asked to
+## investigate before building; no code written yet, findings only
+
+Harvey wanted real research on three things before committing further:
+whether local/offline TTS could replace the Polly relay entirely,
+whether PNGTuber/VTuber is realistic to build, and whether the viewer
+avatars/pets idea from a reference screenshot is buildable.
+
+### Local/offline TTS — a real, legally-clean candidate found
+
+Harvey's question: he cited a game he called "World of Claudecraft" as
+evidence that quality TTS at scale doesn't require paying per-character
+cloud fees, and wanted to know how.
+
+**What we found**: the game is real (**World of ClaudeCraft**, a
+browser MMORPG). It does NOT prove the theory as stated — its NPC voice
+lines were generated with **ElevenLabs, a paid cloud TTS API**, same
+category as Polly. The actual reason it doesn't rack up a huge bill:
+those lines are a **fixed, finite set written and generated once during
+development**, shipped as static audio files — not synthesized live per
+player/session the way Stream Composer's chat TTS has to be (unpredictable,
+real-time chat text can't be pre-generated). Harvey's underlying instinct
+— that high-volume voiced content avoids live per-use billing — is
+correct, but the mechanism is pre-generation/caching, not a bundled local
+engine replacing the cloud call. Worth telling him this directly rather
+than letting the specific example stand uncorrected.
+
+**That said, a real local option does exist and is worth pursuing on its
+own merits**: **Kokoro TTS** (Apache 2.0 — clean, no GPL conflict), 54
+voices across 8 languages from one ~327MB model, real-time on plain CPU.
+Real Rust crates exist for Tauri integration (`kokoro-rs`, `kokoroxide`,
+using ONNX Runtime, no Python needed), and Tauri's documented sidecar
+mechanism (`externalBin`) is the standard way to bundle a platform binary
+like this. Piper — the other well-known option — moved its actively
+maintained fork to **GPL-3.0** in Oct 2025, a hard no under this
+project's license rule; its old MIT snapshot exists but pinning an
+unmaintained fork is a real risk, not recommended. **Honest quality
+caveat**: Kokoro is a genuine step up from browser `speechSynthesis`'s
+thin OS voices, but isn't independently verified as Polly-neural-tier —
+frame it as "a much better free tier," not "replaces Polly." Not started
+— a real candidate for a third TTS provider option, worth prototyping.
+
+### PNGTuber/VTuber — PNGTuber is small and near-term, full VTuber is a
+### separate, much bigger project
+
+**PNGTuber**: confirmed simple in the real world (mic volume crosses a
+threshold → swap between two images, same mechanism Veadotube Mini and
+similar tools use) — buildable entirely with standard browser APIs
+(`getUserMedia` + Web Audio API's `AnalyserNode`) inside the baked,
+backend-free `scene.html`, zero native/Rust code needed. Same complexity
+class as the existing Chat + TTS Overlay item. Realistic near-term
+candidate.
+
+**Full VTuber**: harder, but the hard part turned out to be model
+rigging/rendering, not tracking. **MediaPipe Face Landmarker** (Google,
+Apache 2.0) does real-time 468-point face tracking + blendshapes and —
+genuinely useful finding — runs **entirely client-side via WASM**, which
+means real face tracking is architecturally possible even inside the
+backend-free baked overlay, not just in the native editor process.
+Actually animating a rigged Live2D/VRM model from that tracking data is
+where the real engineering weight sits, and is a separate, meaningfully
+bigger problem. **Recommendation**: build PNGTuber first if either gets
+picked up — VTuber support deserves its own dedicated scoping pass later,
+not bundled in as "the same feature, just fancier."
+
+**Overlap with the webcam eye-tracking idea (task #35)**: real but
+limited — MediaPipe's face landmarks include eye-region points, a
+plausible starting point, but gaze *direction* estimation is a distinct,
+harder problem than facial-landmark animation tracking. Current
+webcam-based gaze research lands around 2-3° of error vs. Tobii
+hardware's ~1.6° — share the underlying CV tooling/pipeline concept, not
+a shared solution. Don't assume solving one gets the other for free.
+
+### Viewer pets/overlay games — two different features hiding under one
+### name, only one is near-term buildable
+
+Real-world examples confirmed (Streamlabs Chat Pets, StreamPet, Cat
+Stream Pet Widget) — and they reveal an important split:
+
+- **Chat-message-triggered pets** (a pet reacts when someone sends a
+  real chat message) — buildable now, reusing the exact same
+  chat-connection plumbing already built for Chat + TTS Overlay. Similar
+  complexity to that existing item.
+- **Event-triggered pets** (follow/sub/bits/donation-triggered) — this
+  is actually the *dominant real-world pattern*, and it's **NOT**
+  buildable with today's architecture. It needs Twitch's EventSub API,
+  which requires OAuth app registration plus either a webhook receiver or
+  an authenticated WebSocket — a real credential/backend requirement,
+  same class of gap that's already blocking YouTube chat. The version of
+  this feature people actually recognize is the harder one to build, not
+  the easier one.
+
+**Persistence without a backend**: the baked overlay's OBS Browser Source
+runs in a persistent Chromium profile — `localStorage`/`IndexedDB` there
+survives between stream sessions (unless the source cache gets cleared),
+enough for a simple "has this viewer shown up before" check, though it's
+local to one PC/OBS install and invisible across machines. Workable for a
+first version, not full persistence.
+
+**Broader overlay-games survey**: chat-controlled on-screen elements and
+chat-voted mini-polls are the same complexity class as pets (just message
+parsing). Prediction/battle-style overlays with real scoring and
+resolution logic are a meaningfully bigger category — closer to a small
+game engine than a decorative overlay item, not a natural next step from
+here.
+
+**Verdict**: a basic chat-message-triggered pet item is realistically
+near-term buildable. The more recognizable event-triggered version needs
+new backend/OAuth infrastructure Stream Composer doesn't have — logged as
+a real gap, not something to fake or skip past.
 
 ## Outside sources scouted for ideas (2026-08-10) — not scoped, not built
 
