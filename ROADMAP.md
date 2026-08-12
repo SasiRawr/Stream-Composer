@@ -911,6 +911,61 @@ lands around 2-3° of error vs. Tobii hardware's ~1.6° — share the
 underlying CV tooling/pipeline concept, not a shared solution. Don't
 assume solving one gets the other for free.
 
+### PNGTuber grew 3 more animation styles; programmatic VTuber rigging researched properly (2026-08-11)
+
+**PNGTuber, v1.12.0**: the original single behavior (idle/talking image
+swap) is now one of 4 selectable styles — **Bounce/Bob** (continuous CSS
+bounce loop while talking), **Brightness Pulse** (CSS filter lightens
+while talking, dims while quiet), and **Mouth Flap** (a static body
+image + a separate mouth layer alternating open/closed on an interval
+while talking) — matching the "basic PNGTuber app" feature set Harvey
+had seen in other free tools. All 4 share the identical mic-volume
+RMS-detection core from v1.10.0; only the DOM/CSS/script shape per style
+differs. `pngtuber-engine.js`'s `setTalking()` dispatches on a `STYLE`
+constant via a plain runtime `if/else` — deliberately NOT the
+build-time-string-dispatch pattern used elsewhere (chat-tts-engine.js,
+viewer-pet-engine.js) — because here all 4 branches are cheap, side-
+effect-free DOM updates sharing one function, not duplicated
+network-connection code; the earlier "runtime dispatch is a bug" lesson
+applied specifically to avoiding dead connection code with real side
+effects, not to banning conditionals generally. Switching an item's
+style never drops an already-picked image for a *different* style — all
+5 possible image slots (idle/talking/body/mouthOpen/mouthClosed) are
+collected into `assets/` whenever set, regardless of which style is
+currently active.
+
+**Programmatic VTuber rigging — a real, sourced research pass finally
+done** (earlier in the session this only got relayed to Harvey in chat,
+not written up — corrected here). Full writeup:
+https://claude.ai/code/artifact/488fd65e-6431-4a4d-baf7-868e52f4a26a
+
+Headline finding: **"flat image in, working rig out, zero human
+correction" is not solved anywhere in 2026 for VTuber-style character
+art**, in either 2D or 3D. What IS real and shipping: driving an
+*already-rigged* model from tracking data (VTube Studio/VSeeFace/
+VRChat — fully solved, not the open problem); Komiko's automatic
+layer-splitting of a flat character image (real prep-work automation,
+not rigging); Mixamo's genuine one-click auto-rig for *standard
+humanoid* 3D meshes (works well, but VTuber proportions usually aren't
+standard-humanoid enough for good results); Blender's Rigify (commonly
+misunderstood — it does NOT detect bone placement from a mesh, a human
+manually aligns a meta-rig first, then Rigify auto-generates the
+*control* rig on top). The one tool found that does true end-to-end
+automatic mesh+skeleton generation from a flat image is **SpriteToMesh**
+(2025 research, arXiv) — but it's research code trained on game
+sprites, not a polished product, and untested on hand-drawn VTuber art.
+After Effects' Puppet Pin Tool cannot have its pin placement automated
+via scripting at all — not a maturity gap, the ExtendScript/UXP API
+simply doesn't expose that. Professional 3D VTuber rigging still runs
+$2,000-5,000+/model in 2026, roughly unchanged from prior years — itself
+a signal that automation hasn't meaningfully eaten this market yet.
+
+**Honest scope if this is ever built**: "2D layer-splitting + basic
+auto-bone-placement as animation-ready prep, not a finished rig" — the
+same category Komiko already occupies. Still explicitly deferred, not
+scheduled to any version — this is context for whenever full VTuber
+rigging gets raised again.
+
 ### Multi-participant Discord-voice PNGTuber — genuinely simpler than expected, no bot needed (2026-08-11)
 
 Harvey described a real feature seen elsewhere: multiple people in a
