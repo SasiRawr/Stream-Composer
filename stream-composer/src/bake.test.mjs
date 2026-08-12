@@ -223,6 +223,29 @@ assert(petHtml.includes('src="assets/v1.png"'), 'the img tag points at the copie
 assert(petHtml.includes('connectTwitch("somestreamer")'), "the viewer-pet item's Twitch connect call reaches the baked output");
 assert(petHtml.includes('is-reacting'), 'the bounce-reaction CSS class is present');
 
+// ---- collectAssetCopies + buildSceneHtml: pet-roster item ----
+const rosterProject = baseProject([{
+  id: 'r1', type: 'pet-roster', x: 0, y: 0, width: 300, height: 200, rotation: 0, zIndex: 0,
+  props: { petImagePath: 'C:/art/roster-pet.png', platformKey: 'twitch', channelName: 'somestreamer', maxPets: 5 },
+}]);
+const rosterCopies = collectAssetCopies(rosterProject);
+assert(rosterCopies.length === 1 && rosterCopies[0].destRelativePath === 'assets/r1.png', 'a pet-roster item with an image set produces exactly 1 asset copy (one shared image, not per-chatter)');
+
+const rosterHtml = buildSceneHtml(rosterProject, { r1: 'assets/r1.png' });
+assert(rosterHtml.includes('item-pet-roster'), 'the pet-roster item is rendered');
+assert(rosterHtml.includes('roster-r1-0-stage'), "the pet-roster item's stage container uses an instance-scoped id");
+assert(!rosterHtml.includes('<img'), 'unlike viewer-pet, the static HTML has no baked <img> tag at all - pets are created entirely at runtime');
+assert(rosterHtml.includes('PET_SRC = "assets/r1.png"'), 'the shared pet image asset path reaches the inlined script');
+assert(rosterHtml.includes('MAX_PETS = 5'), 'the configured roster cap reaches the inlined script');
+assert(rosterHtml.includes('connectTwitch("somestreamer")'), "the pet-roster item's Twitch connect call reaches the baked output");
+assert(rosterHtml.includes('pet-roster-wrapper') && rosterHtml.includes('pet-roster-pet'), 'position (wrapper) and bounce (inner img) CSS classes are both present');
+
+const rosterNoImageProject = baseProject([{
+  id: 'r2', type: 'pet-roster', x: 0, y: 0, width: 300, height: 200, rotation: 0, zIndex: 0,
+  props: { platformKey: 'twitch', channelName: '' },
+}]);
+assert(collectAssetCopies(rosterNoImageProject).length === 0, 'a pet-roster item with no image set yet produces no asset copies (not a crash)');
+
 // ---- buildSceneHtml: items sort by zIndex regardless of array order ----
 const outOfOrder = baseProject([
   { id: 'top', type: 'frame', x: 0, y: 0, width: 10, height: 10, rotation: 0, zIndex: 5,

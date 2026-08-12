@@ -4,6 +4,33 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.13.0 — 2026-08-12 (pre-release, pending verification)
+
+A new item type: **Chat Pet Roster** — one pet per active chatter,
+rather than a single shared pet reacting to everyone.
+
+### Added
+- **Chat Pet Roster** — a roster of small pets, one per person currently
+  chatting. Each pet free-roams (wanders and bounces off the edges) inside
+  the item's box, and bounces specifically when *its own* chatter sends a
+  message — not on every message in the channel. The roster is capped
+  (default 6, adjustable): once full, a new chatter's pet takes the spot
+  of whoever's been quietest the longest. All pets share one image for
+  now. Twitch + Kick, same platform set as the existing Viewer Pet.
+- Distinct from **Viewer Pet** (unchanged) — that's still the simple
+  single-pet-reacts-to-any-message version; Chat Pet Roster is the
+  multi-pet, per-chatter version, kept as its own item type so neither
+  one has to compromise on what it does well.
+
+### Verification note
+Covered by automated tests on the string-generation logic (roster/
+eviction bookkeeping, the free-roam wander math, the Twitch/Kick
+username-extraction connectors). The actual live behaviors — pets
+spawning per real chatter, wandering looking natural, evicting the right
+one when the roster's full, bouncing on the correct pet — need a human
+watching a real chat, same as every other live-chat-driven feature in
+this app.
+
 ## v1.12.0 — 2026-08-11 (pre-release, pending verification)
 
 Expands the PNGTuber overlay item from its original single behavior

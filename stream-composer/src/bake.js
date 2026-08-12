@@ -19,6 +19,7 @@ import { buildChatOverlayScript } from './chat-tts-engine.js';
 import { buildCountdownTimerScript } from './countdown-timer-engine.js';
 import { buildPngtuberScript } from './pngtuber-engine.js';
 import { buildViewerPetScript } from './viewer-pet-engine.js';
+import { buildPetRosterScript } from './pet-roster-engine.js';
 
 // Escapes text for safe use inside an HTML attribute or text node.
 function escapeHtml(s) {
@@ -379,6 +380,52 @@ function renderViewerPetItem(item, instanceId, assetPathsById) {
   return { html, script };
 }
 
+// ---- CHAT PET ROSTER ----------------------------------------------------
+// petAssetPath comes from collectAssetCopies() below, same lookup-by-id
+// pattern viewer-pet already uses (one shared image for every chatter's
+// pet in v1 - see pet-roster-engine.js's header for the design rationale).
+// Unlike viewer-pet, the actual pet <img> elements are NOT part of this
+// static HTML at all - they're created/destroyed entirely at runtime by
+// the inlined script as chatters come and go, so this only needs to bake
+// an empty, correctly-sized "stage" container for them to be appended
+// into (position: relative, so the pets' absolute positioning is scoped
+// to this item's own box, not the whole page).
+function renderPetRosterItem(item, instanceId, assetPathsById) {
+  const petAssetPath = assetPathsById[item.id] || '';
+  const html = `
+<div class="item item-pet-roster" style="${wrapperStyle(item)}">
+  <style>
+    #${instanceId}-wrap { position: relative; width: 100%; height: 100%; }
+    #${instanceId}-stage { position: relative; width: 100%; height: 100%; overflow: hidden; }
+    /* Position (JS-driven, changes every wander tick) lives on the OUTER
+       wrapper; the bounce reaction (CSS-driven) lives on the INNER img.
+       Keeping them on separate elements means the wander loop's inline
+       transform and the CSS keyframe animation's transform never fight
+       over the same element - a bounce plays in place at wherever the
+       pet currently is, instead of snapping to a fixed corner for its
+       duration (the actual bug in an earlier draft of this file). */
+    .pet-roster-wrapper { position: absolute; top: 0; left: 0; pointer-events: none; }
+    .pet-roster-pet { display: block; width: 100%; height: 100%; object-fit: contain; transform-origin: 50% 100%; }
+    .pet-roster-pet.is-reacting { animation: ${instanceId}-bounce 0.5s ease; }
+    @keyframes ${instanceId}-bounce {
+      0% { transform: scale(1, 1); }
+      30% { transform: scale(1.08, 0.9) translateY(4px); }
+      55% { transform: scale(0.94, 1.1) translateY(-14px); }
+      75% { transform: scale(1.04, 0.96) translateY(2px); }
+      100% { transform: scale(1, 1); }
+    }
+    #${instanceId}-status { position: absolute; bottom: 4px; left: 4px; right: 4px; font-family: 'Inter', sans-serif; font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; }
+  </style>
+  <div id="${instanceId}-wrap">
+    <div id="${instanceId}-stage"></div>
+    <div id="${instanceId}-status"></div>
+  </div>
+</div>`;
+
+  const script = buildPetRosterScript(instanceId, petAssetPath, item.props);
+  return { html, script };
+}
+
 // ---- ASSET COLLECTION -------------------------------------------------
 // Every `image` item needs its source file copied into the output's
 // assets/ folder, and so does every popup-slide item's slide that uses a
@@ -410,6 +457,14 @@ export function collectAssetCopies(project) {
       });
     }
     if (item.type === 'viewer-pet' && item.props.petImagePath) {
+      const ext = (item.props.petImagePath.split('.').pop() || 'png').toLowerCase();
+      copies.push({
+        itemId: item.id,
+        sourcePath: item.props.petImagePath,
+        destRelativePath: `assets/${item.id}.${ext}`,
+      });
+    }
+    if (item.type === 'pet-roster' && item.props.petImagePath) {
       const ext = (item.props.petImagePath.split('.').pop() || 'png').toLowerCase();
       copies.push({
         itemId: item.id,
@@ -460,6 +515,7 @@ export function buildSceneHtml(project, assetPathsById) {
     if (item.type === 'countdown-timer') return renderCountdownTimerItem(item, `countdown-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
     if (item.type === 'pngtuber') return renderPngtuberItem(item, `pngtuber-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     if (item.type === 'viewer-pet') return renderViewerPetItem(item, `pet-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
+    if (item.type === 'pet-roster') return renderPetRosterItem(item, `roster-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     return { html: '', script: '' };
   });
 

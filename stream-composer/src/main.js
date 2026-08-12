@@ -187,6 +187,14 @@ function defaultPropsFor(type) {
       channelName: '',
     };
   }
+  if (type === 'pet-roster') {
+    return {
+      petImagePath: '',        // one shared image for every chatter's pet in v1 — see pet-roster-engine.js header
+      platformKey: 'twitch',   // 'twitch' | 'kick' — same platform set as Viewer Pet
+      channelName: '',
+      maxPets: 6,              // roster cap — the N most-recently-active chatters, oldest evicted when full
+    };
+  }
   return {};
 }
 
@@ -197,6 +205,7 @@ function defaultSizeFor(type) {
   if (type === 'countdown-timer') return { width: 420, height: 160 }; // a flat label+numbers bar
   if (type === 'pngtuber') return { width: 320, height: 320 };    // roughly square, typical character-art proportions
   if (type === 'viewer-pet') return { width: 180, height: 180 };  // smaller than pngtuber — a corner critter, not a main character
+  if (type === 'pet-roster') return { width: 500, height: 220 };  // wide, flat strip — room for several pets to wander side to side
   return { width: 300, height: 300 };
 }
 
@@ -438,6 +447,7 @@ const PLACEHOLDER_ACCENTS = {
   'countdown-timer': '#ffb454',
   'pngtuber': '#ff6ec4',
   'viewer-pet': '#7cffb4',
+  'pet-roster': '#5ec8ff',
 };
 
 function createRectFabricObject(item) {
@@ -581,7 +591,7 @@ function deleteSelectedItem() {
 const LIBRARY_TYPE_LABELS = {
   frame: 'Frame / Border', image: 'Image', 'popup-slide': 'Popup Slide',
   'chat-overlay': 'Chat + TTS Overlay', 'countdown-timer': 'Countdown Timer', pngtuber: 'PNGTuber',
-  'viewer-pet': 'Viewer Pet',
+  'viewer-pet': 'Viewer Pet', 'pet-roster': 'Chat Pet Roster',
 };
 
 let libraryEntries = [];
@@ -719,6 +729,7 @@ function renderPropertiesPanel() {
   if (item.type === 'countdown-timer') return renderCountdownTimerProperties(item, body);
   if (item.type === 'pngtuber') return renderPngtuberProperties(item, body);
   if (item.type === 'viewer-pet') return renderViewerPetProperties(item, body);
+  if (item.type === 'pet-roster') return renderPetRosterProperties(item, body);
 }
 
 function renderFrameProperties(item, body) {
@@ -2324,6 +2335,50 @@ function renderViewerPetProperties(item, body) {
   ['pf-petPlatform', 'pf-petChannelName'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
 }
 
+function renderPetRosterProperties(item, body) {
+  const p = item.props;
+
+  body.innerHTML = `
+    <div class="field"><label>Pet image (shared by every chatter's pet)</label>
+      <div class="hint">${escapeHtml(p.petImagePath || 'No image chosen yet')}</div>
+    </div>
+    <button class="secondary block" id="pf-pickRosterImage" type="button">Choose pet image…</button>
+    <div class="field">
+      <label>Chat platform</label>
+      <select id="pf-rosterPlatform">
+        <option value="twitch" ${p.platformKey !== 'kick' ? 'selected' : ''}>Twitch</option>
+        <option value="kick" ${p.platformKey === 'kick' ? 'selected' : ''}>Kick</option>
+      </select>
+      <div class="hint">TikTok isn't supported here yet — Twitch and Kick only for now.</div>
+    </div>
+    <div class="field">
+      <label>Channel name</label>
+      <input type="text" id="pf-rosterChannelName" value="${escapeHtml(p.channelName)}">
+    </div>
+    <div class="field">
+      <label>Max pets on screen at once (<span id="pf-maxPetsValue">${p.maxPets ?? 6}</span>)</label>
+      <input type="range" id="pf-maxPets" min="1" max="20" step="1" value="${p.maxPets ?? 6}">
+      <div class="hint">The most-recently-active chatters get a pet. Once this many are on screen, a new chatter's pet replaces whoever's been quietest longest.</div>
+    </div>
+    <div class="hint">One pet per active chatter, each wandering freely and bouncing when its own chatter sends a message — only reacts in the baked output (in OBS), there's no live preview here in the editor.</div>
+  `;
+
+  document.getElementById('pf-pickRosterImage').addEventListener('click', async () => {
+    const path = await invoke('pick_image_file');
+    if (!path) return;
+    p.petImagePath = path;
+    renderPropertiesPanel();
+  });
+
+  const applyGeneral = () => {
+    p.platformKey = document.getElementById('pf-rosterPlatform').value;
+    p.channelName = document.getElementById('pf-rosterChannelName').value;
+    p.maxPets = parseInt(document.getElementById('pf-maxPets').value, 10) || 6;
+    document.getElementById('pf-maxPetsValue').textContent = document.getElementById('pf-maxPets').value;
+  };
+  ['pf-rosterPlatform', 'pf-rosterChannelName', 'pf-maxPets'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
+}
+
 function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -2955,6 +3010,7 @@ window.addEventListener('DOMContentLoaded', () => {
     addCountdownTimerBtn: document.getElementById('addCountdownTimerBtn'),
     addPngtuberBtn: document.getElementById('addPngtuberBtn'),
     addViewerPetBtn: document.getElementById('addViewerPetBtn'),
+    addPetRosterBtn: document.getElementById('addPetRosterBtn'),
     canvasSizeLabel: document.getElementById('canvasSizeLabel'),
     fabricCanvasEl: document.getElementById('fabricCanvas'),
     propertiesBody: document.getElementById('propertiesBody'),
@@ -2999,6 +3055,7 @@ window.addEventListener('DOMContentLoaded', () => {
   els.addCountdownTimerBtn.addEventListener('click', () => addItem('countdown-timer'));
   els.addPngtuberBtn.addEventListener('click', () => addItem('pngtuber'));
   els.addViewerPetBtn.addEventListener('click', () => addItem('viewer-pet'));
+  els.addPetRosterBtn.addEventListener('click', () => addItem('pet-roster'));
   els.deleteItemBtn.addEventListener('click', deleteSelectedItem);
   els.saveToLibraryBtn.addEventListener('click', saveSelectedItemToLibrary);
   loadLibrary();
