@@ -166,10 +166,18 @@ function defaultPropsFor(type) {
   }
   if (type === 'pngtuber') {
     return {
+      style: 'swap', // 'swap' | 'bounce' | 'brightness' | 'mouthFlap' — see pngtuber-engine.js's header for what each does
       idleImagePath: '',
       talkingImagePath: '',
+      bodyImagePath: '',        // mouthFlap only — the always-visible base image
+      mouthOpenImagePath: '',   // mouthFlap only
+      mouthClosedImagePath: '', // mouthFlap only
+      mouthWidthPercent: 30,    // mouthFlap only — mouth layer width, as a % of the stage
+      mouthTopPercent: 55,      // mouthFlap only — mouth layer vertical position, as a % from the top
+      mouthLeftPercent: 50,     // mouthFlap only — mouth layer horizontal center, as a % from the left
+      flapIntervalMs: 120,      // mouthFlap only — how fast the mouth alternates open/closed while talking
       micThreshold: 15, // percent sensitivity, 0-100 — see pngtuber-engine.js for how this maps to a 0-1 RMS threshold
-      holdMs: 200,       // how long the talking image stays up through brief pauses before falling back to idle
+      holdMs: 200,       // how long the talking state stays up through brief pauses before falling back to idle
     };
   }
   if (type === 'viewer-pet') {
@@ -2164,50 +2172,119 @@ function renderCountdownTimerProperties(item, body) {
     .forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
 }
 
+const PNGTUBER_STYLE_LABELS = {
+  swap: 'Image Swap (idle / talking)',
+  bounce: 'Bounce / Bob',
+  brightness: 'Brightness Pulse (lighten when talking)',
+  mouthFlap: 'Mouth Flap (body + mouth cutout)',
+};
+
+function pngtuberImagePicker(fieldId, label, pathValue, btnId) {
+  return `
+    <div class="field"><label>${label}</label>
+      <div class="hint">${escapeHtml(pathValue || 'No image chosen yet')}</div>
+    </div>
+    <button class="secondary block" id="${btnId}" type="button">Choose image…</button>
+  `;
+}
+
 function renderPngtuberProperties(item, body) {
   const p = item.props;
+  const style = p.style || 'swap';
+
+  let stylePropsHtml = '';
+  if (style === 'swap') {
+    stylePropsHtml =
+      pngtuberImagePicker('idle', 'Idle image (shown when quiet)', p.idleImagePath, 'pf-pickIdleImage') +
+      pngtuberImagePicker('talking', "Talking image (shown while you're speaking)", p.talkingImagePath, 'pf-pickTalkingImage');
+  } else if (style === 'bounce' || style === 'brightness') {
+    stylePropsHtml = pngtuberImagePicker('idle', 'Character image', p.idleImagePath, 'pf-pickIdleImage');
+  } else if (style === 'mouthFlap') {
+    stylePropsHtml = `
+      ${pngtuberImagePicker('body', "Body image (always visible)", p.bodyImagePath, 'pf-pickBodyImage')}
+      ${pngtuberImagePicker('mouthOpen', 'Mouth — open', p.mouthOpenImagePath, 'pf-pickMouthOpenImage')}
+      ${pngtuberImagePicker('mouthClosed', 'Mouth — closed', p.mouthClosedImagePath, 'pf-pickMouthClosedImage')}
+      <div class="field">
+        <label>Mouth width (<span id="pf-mouthWidthValue">${p.mouthWidthPercent ?? 30}</span>% of stage)</label>
+        <input type="range" id="pf-mouthWidthPercent" min="5" max="80" step="1" value="${p.mouthWidthPercent ?? 30}">
+      </div>
+      <div class="field">
+        <label>Mouth position — horizontal (<span id="pf-mouthLeftValue">${p.mouthLeftPercent ?? 50}</span>% from left)</label>
+        <input type="range" id="pf-mouthLeftPercent" min="0" max="100" step="1" value="${p.mouthLeftPercent ?? 50}">
+      </div>
+      <div class="field">
+        <label>Mouth position — vertical (<span id="pf-mouthTopValue">${p.mouthTopPercent ?? 55}</span>% from top)</label>
+        <input type="range" id="pf-mouthTopPercent" min="0" max="100" step="1" value="${p.mouthTopPercent ?? 55}">
+        <div class="hint">Line these up against your body image — a face's mouth usually sits somewhere around 50-70% down from the top.</div>
+      </div>
+      <div class="field">
+        <label>Flap speed (<span id="pf-flapIntervalValue">${p.flapIntervalMs ?? 120}</span>ms per toggle)</label>
+        <input type="range" id="pf-flapIntervalMs" min="60" max="400" step="10" value="${p.flapIntervalMs ?? 120}">
+        <div class="hint">Lower = faster, more chattery flapping. Higher = slower, more deliberate.</div>
+      </div>
+    `;
+  }
 
   body.innerHTML = `
-    <div class="field"><label>Idle image (shown when quiet)</label>
-      <div class="hint">${escapeHtml(p.idleImagePath || 'No image chosen yet')}</div>
+    <div class="field">
+      <label>Animation style</label>
+      <select id="pf-pngtuberStyle">
+        ${Object.entries(PNGTUBER_STYLE_LABELS).map(([key, label]) => `<option value="${key}" ${style === key ? 'selected' : ''}>${label}</option>`).join('')}
+      </select>
     </div>
-    <button class="secondary block" id="pf-pickIdleImage" type="button">Choose idle image…</button>
-    <div class="field"><label>Talking image (shown while you're speaking)</label>
-      <div class="hint">${escapeHtml(p.talkingImagePath || 'No image chosen yet')}</div>
-    </div>
-    <button class="secondary block" id="pf-pickTalkingImage" type="button">Choose talking image…</button>
+    ${stylePropsHtml}
     <div class="field">
       <label>Mic sensitivity (<span id="pf-micThresholdValue">${p.micThreshold}</span>%)</label>
       <input type="range" id="pf-micThreshold" min="1" max="80" step="1" value="${p.micThreshold}">
-      <div class="hint">Lower = swaps to the talking image more easily (picks up quieter sounds). Raise this if it's triggering on background noise or your mic's natural hiss.</div>
+      <div class="hint">Lower = reacts more easily (picks up quieter sounds). Raise this if it's triggering on background noise or your mic's natural hiss.</div>
     </div>
     <div class="field">
       <label>Hold time after you stop talking (ms)</label>
       <input type="number" id="pf-holdMs" min="0" max="2000" step="50" value="${p.holdMs}">
-      <div class="hint">Keeps the talking image up briefly through short pauses (like mid-sentence breaths) instead of flickering back to idle on every gap.</div>
+      <div class="hint">Keeps the talking reaction up briefly through short pauses (like mid-sentence breaths) instead of flickering back to idle on every gap.</div>
     </div>
     <div class="hint">Reacts to your live microphone only in the baked output (in OBS) — there's no live preview here in the editor. The first time this loads in OBS, you'll need to grant it microphone access: right-click the Browser Source → Interact → allow the microphone prompt, then refresh.</div>
   `;
 
-  document.getElementById('pf-pickIdleImage').addEventListener('click', async () => {
-    const path = await invoke('pick_image_file');
-    if (!path) return;
-    p.idleImagePath = path;
+  document.getElementById('pf-pngtuberStyle').addEventListener('change', (e) => {
+    p.style = e.target.value;
     renderPropertiesPanel();
   });
-  document.getElementById('pf-pickTalkingImage').addEventListener('click', async () => {
-    const path = await invoke('pick_image_file');
-    if (!path) return;
-    p.talkingImagePath = path;
-    renderPropertiesPanel();
-  });
+
+  const wireImagePicker = (btnId, propKey) => {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const path = await invoke('pick_image_file');
+      if (!path) return;
+      p[propKey] = path;
+      renderPropertiesPanel();
+    });
+  };
+  wireImagePicker('pf-pickIdleImage', 'idleImagePath');
+  wireImagePicker('pf-pickTalkingImage', 'talkingImagePath');
+  wireImagePicker('pf-pickBodyImage', 'bodyImagePath');
+  wireImagePicker('pf-pickMouthOpenImage', 'mouthOpenImagePath');
+  wireImagePicker('pf-pickMouthClosedImage', 'mouthClosedImagePath');
 
   const applyGeneral = () => {
     p.micThreshold = parseInt(document.getElementById('pf-micThreshold').value, 10) || 15;
     p.holdMs = parseInt(document.getElementById('pf-holdMs').value, 10) || 0;
     document.getElementById('pf-micThresholdValue').textContent = document.getElementById('pf-micThreshold').value;
+    if (style === 'mouthFlap') {
+      p.mouthWidthPercent = parseInt(document.getElementById('pf-mouthWidthPercent').value, 10) || 30;
+      p.mouthLeftPercent = parseInt(document.getElementById('pf-mouthLeftPercent').value, 10) || 50;
+      p.mouthTopPercent = parseInt(document.getElementById('pf-mouthTopPercent').value, 10) || 55;
+      p.flapIntervalMs = parseInt(document.getElementById('pf-flapIntervalMs').value, 10) || 120;
+      document.getElementById('pf-mouthWidthValue').textContent = document.getElementById('pf-mouthWidthPercent').value;
+      document.getElementById('pf-mouthLeftValue').textContent = document.getElementById('pf-mouthLeftPercent').value;
+      document.getElementById('pf-mouthTopValue').textContent = document.getElementById('pf-mouthTopPercent').value;
+      document.getElementById('pf-flapIntervalValue').textContent = document.getElementById('pf-flapIntervalMs').value;
+    }
   };
-  ['pf-micThreshold', 'pf-holdMs'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
+  const generalIds = ['pf-micThreshold', 'pf-holdMs'];
+  if (style === 'mouthFlap') generalIds.push('pf-mouthWidthPercent', 'pf-mouthLeftPercent', 'pf-mouthTopPercent', 'pf-flapIntervalMs');
+  generalIds.forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
 }
 
 function renderViewerPetProperties(item, body) {

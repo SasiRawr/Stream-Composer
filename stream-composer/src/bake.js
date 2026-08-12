@@ -252,28 +252,99 @@ function renderCountdownTimerItem(item, instanceId) {
 }
 
 // ---- PNGTUBER --------------------------------------------------------
-// idleAssetPath/talkingAssetPath come from collectAssetCopies() below,
-// same lookup-by-compound-key pattern popup-slide's custom icons use.
-// The status/permission-hint text sits UNDER the image (not overlapping
-// it) so it's readable even before the streamer has resized the item to
-// fit their actual character art.
+// Asset paths come from collectAssetCopies() below, same lookup-by-
+// compound-key pattern popup-slide's custom icons use. The status/
+// permission-hint text sits UNDER the image (not overlapping it) so it's
+// readable even before the streamer has resized the item to fit their
+// actual character art. DOM/CSS shape differs by props.style - see
+// pngtuber-engine.js's header comment for what each style does.
 function renderPngtuberItem(item, instanceId, assetPathsById) {
+  const p = item.props;
+  const style = p.style || 'swap';
   const idleAssetPath = assetPathsById[`${item.id}::idle`] || '';
   const talkingAssetPath = assetPathsById[`${item.id}::talking`] || '';
-  const html = `
+  const bodyAssetPath = assetPathsById[`${item.id}::body`] || '';
+  const mouthOpenAssetPath = assetPathsById[`${item.id}::mouthOpen`] || '';
+  const mouthClosedAssetPath = assetPathsById[`${item.id}::mouthClosed`] || '';
+  const statusStyle = `font-family: 'Inter', sans-serif; font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; margin-top: 6px;`;
+
+  let html;
+  if (style === 'mouthFlap') {
+    const mouthWidth = p.mouthWidthPercent ?? 30;
+    const mouthTop = p.mouthTopPercent ?? 55;
+    const mouthLeft = p.mouthLeftPercent ?? 50;
+    html = `
+<div class="item item-pngtuber" style="${wrapperStyle(item)}">
+  <style>
+    #${instanceId}-wrap { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #${instanceId}-stage { position: relative; width: 100%; flex: 1; display: flex; align-items: center; justify-content: center; }
+    #${instanceId}-body { max-width: 100%; max-height: 100%; object-fit: contain; }
+    #${instanceId}-mouth { position: absolute; width: ${mouthWidth}%; left: ${mouthLeft}%; top: ${mouthTop}%; transform: translate(-50%, -50%); pointer-events: none; }
+    #${instanceId}-status { ${statusStyle} }
+  </style>
+  <div id="${instanceId}-wrap">
+    <div id="${instanceId}-stage">
+      <img id="${instanceId}-body" src="${escapeHtml(bodyAssetPath)}" alt="">
+      <img id="${instanceId}-mouth" src="${escapeHtml(mouthClosedAssetPath)}" alt="">
+    </div>
+    <div id="${instanceId}-status"></div>
+  </div>
+</div>`;
+  } else if (style === 'bounce') {
+    html = `
 <div class="item item-pngtuber" style="${wrapperStyle(item)}">
   <style>
     #${instanceId}-wrap { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     #${instanceId}-img { max-width: 100%; max-height: 100%; object-fit: contain; }
-    #${instanceId}-status { font-family: 'Inter', sans-serif; font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; margin-top: 6px; }
+    #${instanceId}-img.is-talking { animation: ${instanceId}-bounce 0.6s ease-in-out infinite; }
+    @keyframes ${instanceId}-bounce {
+      0% { transform: translateY(0); }
+      50% { transform: translateY(-10%); }
+      100% { transform: translateY(0); }
+    }
+    #${instanceId}-status { ${statusStyle} }
   </style>
   <div id="${instanceId}-wrap">
     <img id="${instanceId}-img" src="${escapeHtml(idleAssetPath)}" alt="">
     <div id="${instanceId}-status"></div>
   </div>
 </div>`;
+  } else if (style === 'brightness') {
+    html = `
+<div class="item item-pngtuber" style="${wrapperStyle(item)}">
+  <style>
+    #${instanceId}-wrap { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #${instanceId}-img { max-width: 100%; max-height: 100%; object-fit: contain; filter: brightness(0.72); transition: filter 0.15s ease; }
+    #${instanceId}-img.is-talking { filter: brightness(1.25); }
+    #${instanceId}-status { ${statusStyle} }
+  </style>
+  <div id="${instanceId}-wrap">
+    <img id="${instanceId}-img" src="${escapeHtml(idleAssetPath)}" alt="">
+    <div id="${instanceId}-status"></div>
+  </div>
+</div>`;
+  } else {
+    // 'swap' - the original v1.10.0 behavior.
+    html = `
+<div class="item item-pngtuber" style="${wrapperStyle(item)}">
+  <style>
+    #${instanceId}-wrap { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #${instanceId}-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    #${instanceId}-status { ${statusStyle} }
+  </style>
+  <div id="${instanceId}-wrap">
+    <img id="${instanceId}-img" src="${escapeHtml(idleAssetPath)}" alt="">
+    <div id="${instanceId}-status"></div>
+  </div>
+</div>`;
+  }
 
-  const script = buildPngtuberScript(instanceId, idleAssetPath, talkingAssetPath, item.props);
+  const script = buildPngtuberScript(instanceId, {
+    idle: idleAssetPath,
+    talking: talkingAssetPath,
+    mouthOpen: mouthOpenAssetPath,
+    mouthClosed: mouthClosedAssetPath,
+  }, p);
   return { html, script };
 }
 
@@ -347,20 +418,25 @@ export function collectAssetCopies(project) {
       });
     }
     if (item.type === 'pngtuber') {
-      if (item.props.idleImagePath) {
-        const ext = (item.props.idleImagePath.split('.').pop() || 'png').toLowerCase();
+      // All five possible pngtuber images are collected unconditionally
+      // whenever their path is set, regardless of the item's CURRENT
+      // style - so switching styles later doesn't lose an already-picked
+      // image, same reasoning idle/talking already followed pre-v1.12.0.
+      const pngtuberSlots = [
+        ['idleImagePath', 'idle', 'idle'],
+        ['talkingImagePath', 'talking', 'talking'],
+        ['bodyImagePath', 'body', 'body'],
+        ['mouthOpenImagePath', 'mouthOpen', 'mouth-open'],
+        ['mouthClosedImagePath', 'mouthClosed', 'mouth-closed'],
+      ];
+      for (const [propKey, keySuffix, fileSuffix] of pngtuberSlots) {
+        const path = item.props[propKey];
+        if (!path) continue;
+        const ext = (path.split('.').pop() || 'png').toLowerCase();
         copies.push({
-          itemId: `${item.id}::idle`,
-          sourcePath: item.props.idleImagePath,
-          destRelativePath: `assets/${item.id}-idle.${ext}`,
-        });
-      }
-      if (item.props.talkingImagePath) {
-        const ext = (item.props.talkingImagePath.split('.').pop() || 'png').toLowerCase();
-        copies.push({
-          itemId: `${item.id}::talking`,
-          sourcePath: item.props.talkingImagePath,
-          destRelativePath: `assets/${item.id}-talking.${ext}`,
+          itemId: `${item.id}::${keySuffix}`,
+          sourcePath: path,
+          destRelativePath: `assets/${item.id}-${fileSuffix}.${ext}`,
         });
       }
     }

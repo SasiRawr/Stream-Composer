@@ -4,6 +4,38 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.12.0 — 2026-08-11 (pre-release, pending verification)
+
+Expands the PNGTuber overlay item from its original single behavior
+(image swap) to four selectable animation styles — the "basic PNGTuber
+app" feature set (bounce/bob, brightness pulse, mouth-flap cutout) that
+most other free PNGTuber tools already offer, and a real step toward
+full VTuber-style rigging later.
+
+### Added
+- **PNGTuber: 3 new animation styles**, selectable per item alongside
+  the original behavior (now called "Image Swap"):
+  - **Bounce / Bob** — a single character image that bobs up and down on
+    a smooth, continuous loop for as long as you're talking.
+  - **Brightness Pulse** — a single character image that lightens while
+    you talk and dims back down while you're quiet.
+  - **Mouth Flap** — a static body image with a separate mouth layer on
+    top, alternating between an open and closed mouth image on a fixed
+    interval while you're talking. Mouth position/size and flap speed
+    are all adjustable in the Properties panel.
+- All four styles share the exact same live-mic-volume detection core
+  as before (RMS + adjustable sensitivity + hold time) — only the
+  visual reaction differs. Switching styles later never loses an
+  image you've already picked for a different style.
+
+### Verification note
+Covered by automated tests across the string-generation logic (which
+style produces which DOM/CSS/script output, all 4 styles individually)
+— the actual live behaviors (does the bounce look smooth, is the mouth
+flap believable, does brightness read as "talking" at a glance) need a
+human to actually watch it react to a real voice, same as every other
+mic/chat-driven feature in this app.
+
 ## v1.11.0 — 2026-08-11 (pre-release, pending verification)
 
 This closes out the original v1.x.0 series' three long-open items —

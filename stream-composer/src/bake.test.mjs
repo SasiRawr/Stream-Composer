@@ -147,6 +147,67 @@ assert(pngtuberHtml.includes('IDLE_SRC = "assets/p1-idle.png"'), 'the idle asset
 assert(pngtuberHtml.includes('TALKING_SRC = "assets/p1-talking.png"'), 'the talking asset path reaches the inlined script');
 assert(pngtuberHtml.includes('getUserMedia'), "the pngtuber item's mic-detection script is inlined");
 
+// ---- collectAssetCopies + buildSceneHtml: pngtuber 'bounce' style ----
+const pngtuberBounceProject = baseProject([{
+  id: 'p3', type: 'pngtuber', x: 0, y: 0, width: 300, height: 300, rotation: 0, zIndex: 0,
+  props: { style: 'bounce', idleImagePath: 'C:/art/char.png', micThreshold: 15, holdMs: 200 },
+}]);
+const pngtuberBounceCopies = collectAssetCopies(pngtuberBounceProject);
+assert(pngtuberBounceCopies.length === 1, `a bounce-style pngtuber item with only an idle image produces exactly 1 asset copy (got ${pngtuberBounceCopies.length})`);
+const pngtuberBounceHtml = buildSceneHtml(pngtuberBounceProject, { 'p3::idle': 'assets/p3-idle.png' });
+assert(pngtuberBounceHtml.includes('is-talking { animation:'), 'bounce style: emits a looping CSS animation rule gated on the is-talking class');
+assert(pngtuberBounceHtml.includes("classList.toggle('is-talking'"), 'bounce style: the inlined script toggles the is-talking class');
+
+// ---- collectAssetCopies + buildSceneHtml: pngtuber 'brightness' style ----
+const pngtuberBrightnessProject = baseProject([{
+  id: 'p4', type: 'pngtuber', x: 0, y: 0, width: 300, height: 300, rotation: 0, zIndex: 0,
+  props: { style: 'brightness', idleImagePath: 'C:/art/char.png', micThreshold: 15, holdMs: 200 },
+}]);
+const pngtuberBrightnessHtml = buildSceneHtml(pngtuberBrightnessProject, { 'p4::idle': 'assets/p4-idle.png' });
+assert(pngtuberBrightnessHtml.includes('filter: brightness(0.72)'), 'brightness style: the idle state is dimmed via a CSS filter');
+assert(pngtuberBrightnessHtml.includes('is-talking { filter: brightness(1.25)'), 'brightness style: the talking state lightens via a CSS filter on the is-talking class');
+
+// ---- collectAssetCopies + buildSceneHtml: pngtuber 'mouthFlap' style ----
+const pngtuberMouthFlapProject = baseProject([{
+  id: 'p5', type: 'pngtuber', x: 0, y: 0, width: 300, height: 300, rotation: 0, zIndex: 0,
+  props: {
+    style: 'mouthFlap',
+    bodyImagePath: 'C:/art/body.png',
+    mouthOpenImagePath: 'C:/art/mouth-open.png',
+    mouthClosedImagePath: 'C:/art/mouth-closed.png',
+    mouthWidthPercent: 25, mouthTopPercent: 60, mouthLeftPercent: 50,
+    micThreshold: 15, holdMs: 200, flapIntervalMs: 90,
+  },
+}]);
+const pngtuberMouthFlapCopies = collectAssetCopies(pngtuberMouthFlapProject);
+assert(pngtuberMouthFlapCopies.length === 3, `a mouthFlap-style pngtuber item with body+mouth images set produces exactly 3 asset copies (got ${pngtuberMouthFlapCopies.length})`);
+assert(pngtuberMouthFlapCopies.some((c) => c.itemId === 'p5::body' && c.destRelativePath === 'assets/p5-body.png'), 'the body image gets its own compound-keyed copy entry');
+assert(pngtuberMouthFlapCopies.some((c) => c.itemId === 'p5::mouthOpen' && c.destRelativePath === 'assets/p5-mouth-open.png'), 'the mouth-open image gets its own compound-keyed copy entry');
+assert(pngtuberMouthFlapCopies.some((c) => c.itemId === 'p5::mouthClosed' && c.destRelativePath === 'assets/p5-mouth-closed.png'), 'the mouth-closed image gets its own compound-keyed copy entry');
+
+const pngtuberMouthFlapHtml = buildSceneHtml(pngtuberMouthFlapProject, {
+  'p5::body': 'assets/p5-body.png',
+  'p5::mouthOpen': 'assets/p5-mouth-open.png',
+  'p5::mouthClosed': 'assets/p5-mouth-closed.png',
+});
+assert(pngtuberMouthFlapHtml.includes('pngtuber-p5-0-body'), "the mouthFlap item's body element uses an instance-scoped id");
+assert(pngtuberMouthFlapHtml.includes('pngtuber-p5-0-mouth'), "the mouthFlap item's mouth element uses an instance-scoped id");
+assert(pngtuberMouthFlapHtml.includes('src="assets/p5-body.png"'), 'the body img tag points at the copied body asset');
+assert(pngtuberMouthFlapHtml.includes('src="assets/p5-mouth-closed.png"'), 'the mouth img tag starts on the closed mouth image');
+assert(pngtuberMouthFlapHtml.includes('width: 25%') && pngtuberMouthFlapHtml.includes('left: 50%') && pngtuberMouthFlapHtml.includes('top: 60%'), 'the mouth layer is positioned using the configured width/left/top percentages');
+assert(pngtuberMouthFlapHtml.includes('FLAP_INTERVAL_MS = 90'), 'the configured flap interval reaches the inlined script');
+
+// ---- switching styles later never drops an already-picked image (all 5 slots always collected if set) ----
+const pngtuberAllSlotsProject = baseProject([{
+  id: 'p6', type: 'pngtuber', x: 0, y: 0, width: 300, height: 300, rotation: 0, zIndex: 0,
+  props: {
+    style: 'swap',
+    idleImagePath: 'a.png', talkingImagePath: 'b.png',
+    bodyImagePath: 'c.png', mouthOpenImagePath: 'd.png', mouthClosedImagePath: 'e.png',
+  },
+}]);
+assert(collectAssetCopies(pngtuberAllSlotsProject).length === 5, 'all 5 pngtuber image slots are collected whenever set, regardless of the currently-selected style');
+
 // ---- collectAssetCopies + buildSceneHtml: viewer-pet item ----
 const petProject = baseProject([{
   id: 'v1', type: 'viewer-pet', x: 0, y: 0, width: 200, height: 200, rotation: 0, zIndex: 0,
