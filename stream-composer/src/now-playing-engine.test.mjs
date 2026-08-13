@@ -40,6 +40,17 @@ const noAlbumScript = buildNowPlayingScript('nowplaying-item2-1', { showAlbum: f
 assert(noAlbumScript.includes('SHOW_ALBUM = false'), 'showAlbum: false is baked into the output correctly');
 checkSyntax(noAlbumScript, 'no-album');
 
+// ---- appFilter: baked into the request URL as a query param, not left to Windows' single "current session" guess ----
+const filteredScript = buildNowPlayingScript('nowplaying-item5-4', { appFilter: 'Spotify' });
+assert(filteredScript.includes("NOW_PLAYING_URL = \"http://127.0.0.1:5759/?app=Spotify\""), 'a configured app filter reaches the local server as a query param');
+checkSyntax(filteredScript, 'filtered');
+
+const noFilterScript = buildNowPlayingScript('nowplaying-item6-5', { appFilter: '' });
+assert(noFilterScript.includes("NOW_PLAYING_URL = \"http://127.0.0.1:5759/\""), 'an empty app filter requests the bare URL, no dangling "?app=" query string');
+
+const encodedFilterScript = buildNowPlayingScript('nowplaying-item7-6', { appFilter: 'Apple Music' });
+assert(encodedFilterScript.includes('app=Apple%20Music'), 'a filter containing spaces gets properly URL-encoded, not sent raw');
+
 // ---- refresh interval clamping: never below a sane floor ----
 const tooFastScript = buildNowPlayingScript('nowplaying-item3-2', { refreshIntervalMs: 10 });
 assert(tooFastScript.includes('REFRESH_MS = 500'), 'an absurdly low refreshIntervalMs clamps up to a sane floor (500ms), never hammering the local server');

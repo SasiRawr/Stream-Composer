@@ -199,6 +199,7 @@ function defaultPropsFor(type) {
     return {
       refreshIntervalMs: 2000, // how often to re-poll the local now-playing server
       showAlbum: true,
+      appFilter: 'Spotify', // which app's media session to show — Windows tracks many at once (a paused browser tab counts too), so this pins it to a specific one instead of trusting Windows' single "current" guess
     };
   }
   return {};
@@ -2393,6 +2394,16 @@ function renderNowPlayingProperties(item, body) {
 
   body.innerHTML = `
     <div class="field">
+      <label>App to show</label>
+      <input type="text" id="pf-npAppFilter" value="${escapeHtml(p.appFilter ?? '')}" placeholder="e.g. Spotify — leave blank for anything playing">
+      <div class="hint">Windows tracks "now playing" for every app at once, not just music — a paused browser tab counts too. This pins the overlay to a specific app instead of trusting whichever one Windows happens to think is "current." Leave blank to just show whatever's actually playing.</div>
+    </div>
+    <button class="secondary block" id="pf-npDetect" type="button">See what's playing right now…</button>
+    <div class="field" id="pf-npDetectedWrap" style="display:none;">
+      <label>Detected on this PC just now</label>
+      <div class="hint" id="pf-npDetectedList"></div>
+    </div>
+    <div class="field">
       <label>Refresh interval (<span id="pf-npRefreshValue">${p.refreshIntervalMs ?? 2000}</span>ms)</label>
       <input type="range" id="pf-npRefresh" min="500" max="10000" step="250" value="${p.refreshIntervalMs ?? 2000}">
       <div class="hint">How often it re-checks what's playing. Lower feels snappier when tracks change; higher is gentler on your system.</div>
@@ -2404,12 +2415,32 @@ function renderNowPlayingProperties(item, body) {
     <div class="hint"><strong>Only works while Stream Composer Suite is running on this PC</strong> (it can be minimized) — closing the app fully stops this from updating, same as the local TTS engines.</div>
   `;
 
+  document.getElementById('pf-npDetect').addEventListener('click', async () => {
+    const wrap = document.getElementById('pf-npDetectedWrap');
+    const list = document.getElementById('pf-npDetectedList');
+    wrap.style.display = 'block';
+    list.textContent = 'Checking…';
+    try {
+      const sessions = await invoke('now_playing_sessions');
+      if (!sessions || sessions.length === 0) {
+        list.textContent = 'Nothing detected right now — start playing something and try again.';
+      } else {
+        list.innerHTML = sessions
+          .map((s) => `${s.playing ? '▶' : '⏸'} <strong>${escapeHtml(s.app_id)}</strong>${s.title ? ' — ' + escapeHtml(s.title) : ''}`)
+          .join('<br>');
+      }
+    } catch (e) {
+      list.textContent = 'Could not check — is this running on Windows?';
+    }
+  });
+
   const applyGeneral = () => {
+    p.appFilter = document.getElementById('pf-npAppFilter').value;
     p.refreshIntervalMs = parseInt(document.getElementById('pf-npRefresh').value, 10) || 2000;
     p.showAlbum = document.getElementById('pf-npShowAlbum').checked;
     document.getElementById('pf-npRefreshValue').textContent = document.getElementById('pf-npRefresh').value;
   };
-  ['pf-npRefresh', 'pf-npShowAlbum'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
+  ['pf-npAppFilter', 'pf-npRefresh', 'pf-npShowAlbum'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
 }
 
 function escapeHtml(s) {

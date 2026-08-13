@@ -102,11 +102,21 @@ fn resolve_app_data_path(app: tauri::AppHandle, filename: String) -> Result<Stri
 /// populates the volume flyout's mini-player). One integration covers
 /// ANY app that hooks into it - Spotify, a YouTube Music browser tab, the
 /// Apple Music Windows app, whatever - instead of building a separate
-/// OAuth/API-key integration per streaming service. `GetCurrentSession()`
-/// returns whichever session Windows currently considers "the" active one
-/// (usually whatever was most recently played/interacted with) - good
-/// enough for a one-track overlay; picking a *specific* app's session
-/// among several playing at once isn't exposed here in v1.
+/// OAuth/API-key integration per streaming service.
+///
+/// Deliberately does NOT use `GetCurrentSession()` - verified live
+/// (2026-08-13) against Harvey's own real machine while he had Spotify
+/// playing alongside a paused Opera GX tab: Windows' notion of "current"
+/// is just a last-interacted-with heuristic, not tied to a specific app,
+/// and Harvey correctly flagged that a browser tab (e.g. a Twitch stream
+/// he's watching) actually PLAYING audio at the same time as Spotify
+/// could easily become "current" instead. Real fix: enumerate every
+/// active session via `GetSessions()`, prefer whichever is genuinely
+/// `Playing` (not just whichever Windows calls current), and if an
+/// `app_filter` substring is given, only consider sessions whose
+/// `SourceAppUserModelId` contains it (e.g. "spotify") - so a stream
+/// tab playing in the background can never get shown instead of the
+/// music app actually being asked for.
 ///
 /// Unlike everything above this comment, the BAKED scene.html running in
 /// OBS's Browser Source has no Tauri bridge at all (same constraint every
@@ -124,7 +134,14 @@ struct NowPlayingInfo {
     app_id: String,
 }
 
-async fn now_playing_info_impl() -> Result<Option<NowPlayingInfo>, String> {
+#[derive(serde::Serialize)]
+struct NowPlayingSession {
+    app_id: String,
+    title: String,
+    playing: bool,
+}
+
+async fn now_playing_all_sessions() -> Result<Vec<(windows::Media::Control::GlobalSystemMediaTransportControlsSession, String, String, bool)>, String> {
     use windows::Media::Control::{
         GlobalSystemMediaTransportControlsSessionManager,
         GlobalSystemMediaTransportControlsSessionPlaybackStatus,
@@ -135,9 +152,71 @@ async fn now_playing_info_impl() -> Result<Option<NowPlayingInfo>, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let session = match manager.GetCurrentSession() {
-        Ok(s) => s,
-        Err(_) => return Ok(None), // nothing is playing anywhere right now
+    // Two passes deliberately, not one: `IVectorView<...>` (what
+    // GetSessions() returns) isn't Send, so it can't stay alive across an
+    // `.await` inside a Tauri async command's future. Pass 1 is fully
+    // synchronous - pull owned session handles (which ARE individually
+    // Send, unlike the vector view itself) plus their sync-only
+    // properties out, then let the vector view drop. Pass 2, over the now-
+    // owned Vec, does the one async call (TryGetMediaPropertiesAsync)
+    // that actually needs to await.
+    let owned_sessions: Vec<_> = {
+        let sessions = manager.GetSessions().map_err(|e| e.to_string())?;
+        let mut collected = Vec::new();
+        for session in &sessions {
+            let app_id = session.SourceAppUserModelId().map(|h| h.to_string()).unwrap_or_default();
+            let playing = session
+                .GetPlaybackInfo()
+                .ok()
+                .and_then(|info| info.PlaybackStatus().ok())
+                .map(|status| status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+                .unwrap_or(false);
+            collected.push((session.clone(), app_id, playing));
+        }
+        collected
+    };
+
+    let mut out = Vec::new();
+    for (session, app_id, playing) in owned_sessions {
+        let title = session
+            .TryGetMediaPropertiesAsync()
+            .map_err(|e| e.to_string())?
+            .await
+            .ok()
+            .and_then(|p| p.Title().ok())
+            .map(|h| h.to_string())
+            .unwrap_or_default();
+        out.push((session, app_id, title, playing));
+    }
+    Ok(out)
+}
+
+async fn now_playing_info_impl(app_filter: Option<&str>) -> Result<Option<NowPlayingInfo>, String> {
+    let filter_lower = app_filter
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+
+    let sessions = now_playing_all_sessions().await?;
+
+    // Prefer a session that's actually Playing over one that merely has
+    // track info loaded (e.g. paused) - and if a filter is set, only
+    // consider sessions matching it at all, playing or not, so pausing
+    // Spotify shows "nothing" rather than falling through to whatever
+    // else happens to be playing.
+    let candidates: Vec<_> = sessions
+        .iter()
+        .filter(|(_, app_id, _, _)| {
+            filter_lower.as_ref().is_none_or(|f| app_id.to_lowercase().contains(f))
+        })
+        .collect();
+
+    let chosen = candidates
+        .iter()
+        .find(|(_, _, _, playing)| *playing)
+        .or_else(|| candidates.first());
+
+    let Some((session, app_id, _title, _playing)) = chosen else {
+        return Ok(None);
     };
 
     let props = session
@@ -154,24 +233,36 @@ async fn now_playing_info_impl() -> Result<Option<NowPlayingInfo>, String> {
         return Ok(None);
     }
 
-    let playing = session
-        .GetPlaybackInfo()
-        .ok()
-        .and_then(|info| info.PlaybackStatus().ok())
-        .map(|status| status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
-        .unwrap_or(false);
-
-    let app_id = session
-        .SourceAppUserModelId()
-        .map(|h| h.to_string())
-        .unwrap_or_default();
-
-    Ok(Some(NowPlayingInfo { title, artist, album, playing, app_id }))
+    Ok(Some(NowPlayingInfo {
+        title,
+        artist,
+        album,
+        playing: session
+            .GetPlaybackInfo()
+            .ok()
+            .and_then(|info| info.PlaybackStatus().ok())
+            .map(|status| status == windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+            .unwrap_or(false),
+        app_id: app_id.clone(),
+    }))
 }
 
 #[tauri::command]
-async fn now_playing_info() -> Result<Option<NowPlayingInfo>, String> {
-    now_playing_info_impl().await
+async fn now_playing_info(app_filter: Option<String>) -> Result<Option<NowPlayingInfo>, String> {
+    now_playing_info_impl(app_filter.as_deref()).await
+}
+
+/// Lists every currently active media session Windows knows about, so the
+/// Properties panel can show Harvey (or anyone) a live "here's what's
+/// actually running right now" list instead of guessing at an app-name
+/// filter string blind.
+#[tauri::command]
+async fn now_playing_sessions() -> Result<Vec<NowPlayingSession>, String> {
+    let sessions = now_playing_all_sessions().await?;
+    Ok(sessions
+        .into_iter()
+        .map(|(_, app_id, title, playing)| NowPlayingSession { app_id, title, playing })
+        .collect())
 }
 
 const NOW_PLAYING_SERVER_PORT: u16 = 5759;
@@ -179,10 +270,14 @@ const NOW_PLAYING_SERVER_PORT: u16 = 5759;
 /// Runs forever on its own OS thread, started once at app launch (no
 /// explicit Start/Stop step needed, unlike Kokoro/Chatterbox - this has
 /// no model to download and costs nothing to just always be available).
-/// Every request gets a fresh read of whatever's currently playing plus a
-/// permissive CORS header, since the baked scene.html's origin (a local
-/// file opened by OBS's Browser Source) isn't the same as
-/// 127.0.0.1:5759 and the browser will block the fetch without it.
+/// Every request gets a fresh read plus a permissive CORS header, since
+/// the baked scene.html's origin (a local file opened by OBS's Browser
+/// Source) isn't the same as 127.0.0.1:5759 and the browser will block
+/// the fetch without it. An optional `?app=<substring>` query param on
+/// the request URL is forwarded as the app_filter (case-insensitive
+/// substring match against each session's SourceAppUserModelId) - baked
+/// into the request URL at bake time from the item's own "App to show"
+/// property, not something OBS/the user has to configure separately.
 fn now_playing_server_thread() {
     std::thread::spawn(|| {
         let server = match tiny_http::Server::http(("127.0.0.1", NOW_PLAYING_SERVER_PORT)) {
@@ -193,7 +288,15 @@ fn now_playing_server_thread() {
             }
         };
         for request in server.incoming_requests() {
-            let body = match tauri::async_runtime::block_on(now_playing_info_impl()) {
+            let app_filter = request
+                .url()
+                .split_once('?')
+                .and_then(|(_, query)| query.split('&').find_map(|pair| pair.strip_prefix("app=")))
+                .map(|v| {
+                    percent_decode(v)
+                });
+
+            let body = match tauri::async_runtime::block_on(now_playing_info_impl(app_filter.as_deref())) {
                 Ok(info) => serde_json::to_string(&info).unwrap_or_else(|_| "null".to_string()),
                 Err(e) => format!("{{\"error\":{}}}", serde_json::to_string(&e).unwrap_or_default()),
             };
@@ -203,6 +306,30 @@ fn now_playing_server_thread() {
             let _ = request.respond(response);
         }
     });
+}
+
+/// Minimal percent-decoding for the one query param we read (`app=`) -
+/// avoids pulling in a full URL-parsing crate just for this.
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        if bytes[i] == b'+' {
+            out.push(b' ');
+        } else {
+            out.push(bytes[i]);
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Opens a URL with whatever the operating system's default browser is.
@@ -630,6 +757,7 @@ pub fn run() {
             file_exists,
             resolve_app_data_path,
             now_playing_info,
+            now_playing_sessions,
             preview_overlay,
             copy_to_clipboard,
             kokoro_model_status,

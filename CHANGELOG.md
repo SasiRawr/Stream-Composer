@@ -4,6 +4,24 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.13.2 — 2026-08-13 (pre-release, pending verification)
+
+A real fix, caught by Harvey immediately after v1.13.1 shipped: Now
+Playing was trusting Windows' own "current session" pick, which isn't
+tied to any specific app — a paused (or even playing) browser tab could
+outrank the actual music app.
+
+### Changed
+- **Now Playing: added an "App to show" filter.** Defaults to
+  "Spotify." The overlay now only shows a track from a session whose
+  app name matches this filter, instead of trusting Windows' single
+  "current" guess — so a Twitch stream or any other browser tab playing
+  in the background can never take over the overlay from your actual
+  music app. Leave it blank to fall back to "whatever's actually
+  playing." A new "See what's playing right now…" button in the
+  Properties panel lists every app Windows currently sees, so it's
+  never a guessing game which name to type.
+
 ## v1.13.1 — 2026-08-13 (pre-release, pending verification)
 
 A quick patch: a **Now Playing** overlay item, added same-day as an

@@ -32,12 +32,21 @@
 export function buildNowPlayingScript(instanceId, props) {
   const refreshMs = Math.max(500, props.refreshIntervalMs ?? 2000);
   const showAlbum = props.showAlbum !== false;
+  const appFilter = (props.appFilter || '').trim();
+
+  // The filter is resolved into the actual request URL at GENERATION
+  // time (a plain query string), not passed as a separate runtime
+  // variable the fetch call has to assemble - one less thing that could
+  // drift between what's configured and what's actually requested.
+  const nowPlayingUrl = appFilter
+    ? `http://127.0.0.1:5759/?app=${encodeURIComponent(appFilter)}`
+    : 'http://127.0.0.1:5759/';
 
   return `
 (function () {
   const REFRESH_MS = ${JSON.stringify(refreshMs)};
   const SHOW_ALBUM = ${JSON.stringify(showAlbum)};
-  const NOW_PLAYING_URL = 'http://127.0.0.1:5759/';
+  const NOW_PLAYING_URL = ${JSON.stringify(nowPlayingUrl)};
 
   const wrapEl = document.getElementById('${instanceId}-wrap');
   const titleEl = document.getElementById('${instanceId}-title');
