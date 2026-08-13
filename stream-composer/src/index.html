@@ -87,6 +87,7 @@
 <div id="status"></div>
 <div id="bakeResultActions" class="bake-result-actions" hidden>
   <button class="secondary" id="copyObsInstructionsBtn" type="button">Copy OBS setup instructions</button>
+  <button class="secondary" id="pushToObsBtn" type="button">Push to OBS…</button>
 </div>
 
 <!--
@@ -150,6 +151,33 @@
   <div class="actions">
     <button class="primary" id="saveToLibraryConfirmBtn" type="button">Save</button>
     <button class="secondary" id="saveToLibraryCancelBtn" type="button">Cancel</button>
+  </div>
+</dialog>
+
+<dialog id="obsPushDialog">
+  <h2>Push to OBS</h2>
+  <div class="hint">Sends this baked scene straight into a running OBS instance as a Browser Source, instead of copying the file path in by hand. Needs the obs-websocket server enabled in OBS (Tools → WebSocket Server Settings) — OBS 28+ has this built in.</div>
+  <div class="field">
+    <label for="obsHostInput">Host</label>
+    <input type="text" id="obsHostInput" value="127.0.0.1">
+  </div>
+  <div class="field">
+    <label for="obsPortInput">Port</label>
+    <input type="number" id="obsPortInput" value="4455">
+  </div>
+  <div class="field">
+    <label for="obsPasswordInput">Password (leave blank if authentication is off)</label>
+    <input type="password" id="obsPasswordInput" value="">
+  </div>
+  <button class="secondary block" id="obsConnectBtn" type="button">Connect &amp; load scenes…</button>
+  <div class="field" id="obsSceneField" hidden>
+    <label for="obsSceneSelect">Scene to add/update the Browser Source in</label>
+    <select id="obsSceneSelect"></select>
+  </div>
+  <div class="hint" id="obsPushStatus"></div>
+  <div class="actions">
+    <button class="primary" id="obsPushConfirmBtn" type="button" disabled>Push</button>
+    <button class="secondary" id="obsPushCancelBtn" type="button">Close</button>
   </div>
 </dialog>
 

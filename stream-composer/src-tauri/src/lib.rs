@@ -332,6 +332,104 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// OBS WebSocket automation (task #47) - lets the editor push a baked
+/// scene straight into a running OBS instance as a Browser Source,
+/// instead of the user copying the file path into OBS by hand every
+/// time. Design confirmed with Harvey 2026-08-13 (AskUserQuestion):
+/// user-triggered via a "Push to OBS" button (never automatic on every
+/// bake - an OBS connection issue should never interrupt the normal
+/// save/bake flow), auto-creates the Browser Source in whichever scene
+/// the user picks if none exists yet for this project, updates it in
+/// place on every push after that.
+///
+/// Built on `obws` 0.15.0 - real API confirmed by reading its actual
+/// source (not guessed): `Client::connect`, `inputs().list/create/
+/// set_settings`, and a purpose-built `BrowserSource` settings struct
+/// with exactly the fields OBS's browser_source input kind expects
+/// (`is_local_file`/`local_file`/`url`/`width`/`height`/etc.) - no need
+/// to hand-construct that JSON shape ourselves.
+///
+/// Known, documented limitation (Harvey explicitly OK'd shipping with
+/// this rather than waiting): obs-websocket has no dedicated "force
+/// hard refresh" call for a Browser Source - only a settings/URL
+/// update, which OBS *usually* reloads on its own but isn't a hard
+/// guarantee the way a browser's Ctrl+F5 is.
+#[tauri::command]
+async fn obs_list_scenes(host: String, port: u16, password: Option<String>) -> Result<Vec<String>, String> {
+    let client = obws::Client::connect(host, port, password.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let scenes = client.scenes().list().await.map_err(|e| e.to_string())?;
+    Ok(scenes.scenes.into_iter().map(|s| s.id.name).collect())
+}
+
+#[tauri::command]
+async fn obs_push_scene(
+    host: String,
+    port: u16,
+    password: Option<String>,
+    scene_name: String,
+    source_name: String,
+    file_path: String,
+    width: u32,
+    height: u32,
+) -> Result<String, String> {
+    use obws::requests::custom::source_settings::{BrowserSource, SOURCE_BROWSER_SOURCE};
+    use obws::requests::inputs::{Create, SetSettings};
+
+    let client = obws::Client::connect(host, port, password.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Input names are globally unique in OBS (not scoped per-scene), so
+    // a plain name match against every browser_source input tells us
+    // whether this project already has one, regardless of which scene
+    // it currently lives in.
+    let existing = client
+        .inputs()
+        .list(Some(SOURCE_BROWSER_SOURCE))
+        .await
+        .map_err(|e| e.to_string())?;
+    let already_exists = existing.iter().any(|i| i.id.name == source_name);
+
+    let path = std::path::Path::new(&file_path);
+    let settings = BrowserSource {
+        is_local_file: true,
+        local_file: path,
+        url: "",
+        width,
+        height,
+        restart_when_active: true,
+        ..Default::default()
+    };
+
+    if already_exists {
+        client
+            .inputs()
+            .set_settings(SetSettings {
+                input: source_name.as_str().into(),
+                settings: &settings,
+                overlay: Some(true),
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok("updated".to_string())
+    } else {
+        client
+            .inputs()
+            .create(Create {
+                scene: scene_name.as_str().into(),
+                input: &source_name,
+                kind: SOURCE_BROWSER_SOURCE,
+                settings: Some(settings),
+                enabled: Some(true),
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok("created".to_string())
+    }
+}
+
 /// Opens a URL with whatever the operating system's default browser is.
 /// Used for single-item live preview (e.g. previewing a popup-slide item
 /// without doing a full Bake first): a temp scene.html is written, then
@@ -608,7 +706,6 @@ fn chatterbox_model_status(app: tauri::AppHandle) -> Result<bool, String> {
 #[tauri::command]
 async fn chatterbox_download_model(app: tauri::AppHandle) -> Result<(), String> {
     let dir = chatterbox_env_dir(&app)?;
-    let python_dir = dir.join("python");
     let python_exe = chatterbox_python_exe(&app)?;
 
     if !python_exe.is_file() {
@@ -628,15 +725,38 @@ async fn chatterbox_download_model(app: tauri::AppHandle) -> Result<(), String> 
         .await
         .map_err(|e| e.to_string())??;
 
+        // Extracted with the flate2/tar CRATES, not a shelled-out `tar`
+        // executable - a real bug caught in Harvey's own testing (2026-08-12,
+        // task #55): `Command::new("tar")` failed with the exact Windows
+        // "file not found" error Rust's std::io::Error produces when the
+        // PROGRAM ITSELF can't be located to spawn (not a missing file
+        // argument, despite how that message reads at a glance) - `tar`
+        // wasn't reliably resolvable from this app's spawned-process PATH
+        // on his machine. A pure-Rust extraction has no such dependency at
+        // all, so this can't recur the same way.
+        //
+        // Deliberately NOT stripping the archive's leading "python/" path
+        // component (unlike the old `--strip-components=1` tar command) -
+        // verified directly against the real downloaded archive
+        // (2026-08-13) that its actual layout is `python/python.exe`, so
+        // extracting as-is into `dir` naturally produces `dir/python/
+        // python.exe` - exactly what chatterbox_python_exe() below already
+        // expects. The old stripped version would have landed python.exe
+        // at `dir/python.exe` instead, a SECOND real bug that was simply
+        // never reached because the `tar`-not-found error always failed
+        // first - caught by checking the real archive, not assumed fixed.
         let _ = app.emit("chatterbox-download-progress", serde_json::json!({ "stage": "Extracting Python runtime" }));
-        std::fs::create_dir_all(&python_dir).map_err(|e| e.to_string())?;
-        let status = std::process::Command::new("tar")
-            .args(["-xzf", &archive_path.to_string_lossy(), "-C", &dir.to_string_lossy(), "--strip-components=1"])
-            .status()
-            .map_err(|e| e.to_string())?;
-        if !status.success() {
-            return Err("Failed to extract the portable Python runtime".into());
-        }
+        let dir2 = dir.clone();
+        let archive_path2 = archive_path.clone();
+        tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+            let file = std::fs::File::open(&archive_path2).map_err(|e| e.to_string())?;
+            let gz = flate2::read::GzDecoder::new(file);
+            let mut archive = tar::Archive::new(gz);
+            archive.unpack(&dir2).map_err(|e| e.to_string())?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         let _ = std::fs::remove_file(&archive_path);
     }
 
@@ -758,6 +878,8 @@ pub fn run() {
             resolve_app_data_path,
             now_playing_info,
             now_playing_sessions,
+            obs_list_scenes,
+            obs_push_scene,
             preview_overlay,
             copy_to_clipboard,
             kokoro_model_status,

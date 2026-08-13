@@ -4,6 +4,47 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.14.0 — 2026-08-13 (pre-release, pending verification)
+
+**OBS WebSocket automation** — the last of the original v1.x.0 series'
+five items — plus a real fix for the Chatterbox download bug Harvey
+hit in his own testing.
+
+### Fixed
+- **Chatterbox TTS download** no longer fails with "The system cannot
+  find the file specified (os error 2)." The old code shelled out to a
+  `tar` executable to extract the downloaded Python runtime, which
+  wasn't reliably found on PATH from this app's spawned-process
+  environment. Now extracted with a pure-Rust archive library instead
+  — no external program dependency at all. Also fixed a second,
+  previously-unreached bug in the same step: the extraction was
+  stripping a path component that shouldn't have been stripped, which
+  would have put `python.exe` in the wrong folder even if `tar` itself
+  had worked. Verified against the real downloaded archive, not just
+  compiled.
+
+### Added
+- **Push to OBS** — a new button next to "Copy OBS setup instructions"
+  after baking. Connects directly to a running OBS instance (via
+  obs-websocket, built into OBS 28+) and adds or updates a Browser
+  Source for you, in whichever scene you pick. First push creates the
+  source; every push after that just updates it in place.
+- Connection settings (host/port/password) are saved after the first
+  successful connection, so you're not re-entering them every time.
+
+### Known limitation, documented honestly
+obs-websocket has no dedicated "force hard refresh" call for a Browser
+Source — Push to OBS updates its settings/URL, which OBS usually
+reloads on its own, but it isn't a hard guarantee. If a push doesn't
+visibly update, toggling the source's visibility once will.
+
+### Verification note
+Couldn't be tested against a real running OBS instance during this
+build (none was running on this machine) — the request-building/API
+logic was verified against `obws`'s actual source code, and the app
+itself builds and launches cleanly, but the live OBS connection genuinely
+needs a human with OBS actually open, more than usual for this project.
+
 ## v1.13.2 — 2026-08-13 (pre-release, pending verification)
 
 A real fix, caught by Harvey immediately after v1.13.1 shipped: Now

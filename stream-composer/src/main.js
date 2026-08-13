@@ -2567,6 +2567,133 @@ function obsSetupInstructions() {
     `4. Leave "Shutdown source when not visible" unchecked`;
 }
 
+// ---- PUSH TO OBS (task #47) -------------------------------------------------
+// App-level (not per-project) connection settings — host/port/password —
+// persisted the same way the Asset Library persists library.json:
+// resolve_app_data_path + the existing generic read/write commands,
+// rather than adding dedicated OBS-specific storage commands. The scene
+// last pushed to for THIS project is saved on the project itself
+// (project.obsSceneName) so re-pushing doesn't re-ask every time.
+let obsSettingsFilePath = null;
+
+async function loadObsSettings() {
+  try {
+    obsSettingsFilePath = await invoke('resolve_app_data_path', { filename: 'obs-settings.json' });
+    const exists = await invoke('file_exists', { path: obsSettingsFilePath });
+    if (exists) {
+      const text = await invoke('read_text_file', { path: obsSettingsFilePath });
+      return JSON.parse(text);
+    }
+  } catch (err) {
+    console.warn('Could not load saved OBS connection settings:', err);
+  }
+  return null;
+}
+
+async function saveObsSettings(settings) {
+  if (!obsSettingsFilePath) return;
+  await invoke('write_text_file', { path: obsSettingsFilePath, contents: JSON.stringify(settings, null, 2) });
+}
+
+async function openPushToObsDialog() {
+  if (!lastBakeInfo) return;
+  const dialog = document.getElementById('obsPushDialog');
+  const hostInput = document.getElementById('obsHostInput');
+  const portInput = document.getElementById('obsPortInput');
+  const passwordInput = document.getElementById('obsPasswordInput');
+  const sceneField = document.getElementById('obsSceneField');
+  const sceneSelect = document.getElementById('obsSceneSelect');
+  const statusEl = document.getElementById('obsPushStatus');
+  const connectBtn = document.getElementById('obsConnectBtn');
+  const pushBtn = document.getElementById('obsPushConfirmBtn');
+  const cancelBtn = document.getElementById('obsPushCancelBtn');
+
+  sceneField.hidden = true;
+  sceneSelect.innerHTML = '';
+  pushBtn.disabled = true;
+  statusEl.textContent = '';
+
+  const saved = await loadObsSettings();
+  if (saved) {
+    hostInput.value = saved.host || '127.0.0.1';
+    portInput.value = saved.port || 4455;
+    passwordInput.value = saved.password || '';
+  }
+
+  async function connectAndLoadScenes() {
+    statusEl.textContent = 'Connecting…';
+    pushBtn.disabled = true;
+    try {
+      const scenes = await invoke('obs_list_scenes', {
+        host: hostInput.value.trim(),
+        port: parseInt(portInput.value, 10) || 4455,
+        password: passwordInput.value || null,
+      });
+      sceneSelect.innerHTML = scenes.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+      if (project.obsSceneName && scenes.includes(project.obsSceneName)) {
+        sceneSelect.value = project.obsSceneName;
+      }
+      sceneField.hidden = false;
+      pushBtn.disabled = false;
+      statusEl.textContent = `Connected — found ${scenes.length} scene${scenes.length === 1 ? '' : 's'}.`;
+      await saveObsSettings({ host: hostInput.value.trim(), port: parseInt(portInput.value, 10) || 4455, password: passwordInput.value });
+    } catch (err) {
+      statusEl.textContent = 'Could not connect to OBS: ' + err + ' — check that OBS is running with the WebSocket server enabled (Tools → WebSocket Server Settings).';
+    }
+  }
+
+  async function doPush() {
+    pushBtn.disabled = true;
+    statusEl.textContent = 'Pushing…';
+    try {
+      const result = await invoke('obs_push_scene', {
+        host: hostInput.value.trim(),
+        port: parseInt(portInput.value, 10) || 4455,
+        password: passwordInput.value || null,
+        sceneName: sceneSelect.value,
+        sourceName: project.sceneName || 'scene',
+        filePath: lastBakeInfo.path,
+        width: lastBakeInfo.width,
+        height: lastBakeInfo.height,
+      });
+      project.obsSceneName = sceneSelect.value;
+      await saveProject();
+      statusEl.textContent = result === 'created'
+        ? `Done — added a new Browser Source to "${sceneSelect.value}".`
+        : `Done — updated the existing Browser Source (usually reloads on its own; if OBS doesn't pick it up, toggle the source's visibility once).`;
+    } catch (err) {
+      statusEl.textContent = 'Push failed: ' + err;
+    } finally {
+      pushBtn.disabled = false;
+    }
+  }
+
+  function cleanup() {
+    connectBtn.removeEventListener('click', connectAndLoadScenes);
+    pushBtn.removeEventListener('click', doPush);
+    cancelBtn.removeEventListener('click', onCancel);
+    dialog.removeEventListener('cancel', onCancel);
+  }
+  function onCancel() {
+    cleanup();
+    dialog.close();
+  }
+
+  connectBtn.addEventListener('click', connectAndLoadScenes);
+  pushBtn.addEventListener('click', doPush);
+  cancelBtn.addEventListener('click', onCancel);
+  dialog.addEventListener('cancel', onCancel);
+
+  dialog.showModal();
+  // If we already have saved connection settings, don't make the user
+  // click "Connect" again every single time — try it automatically. A
+  // fresh setup (no saved settings yet) still waits for a manual click,
+  // since there's nothing meaningful to connect with yet.
+  if (saved && saved.host) {
+    connectAndLoadScenes();
+  }
+}
+
 // ---- SINGLE-ITEM PREVIEW ----------------------------------------------------
 // Lets a popup-slide item be checked in a real browser without doing a
 // full Bake first (which writes into the project folder and copies every
@@ -3113,6 +3240,7 @@ window.addEventListener('DOMContentLoaded', () => {
       setStatus('Couldn\'t copy to clipboard: ' + err, 'err');
     }
   });
+  document.getElementById('pushToObsBtn').addEventListener('click', openPushToObsDialog);
   els.addFrameBtn.addEventListener('click', () => addItem('frame'));
   els.addImageBtn.addEventListener('click', addImageItem);
   els.addPopupSlideBtn.addEventListener('click', () => addItem('popup-slide'));
