@@ -246,6 +246,20 @@ const rosterNoImageProject = baseProject([{
 }]);
 assert(collectAssetCopies(rosterNoImageProject).length === 0, 'a pet-roster item with no image set yet produces no asset copies (not a crash)');
 
+// ---- buildSceneHtml: now-playing item ----
+const nowPlayingProject = baseProject([{
+  id: 'np1', type: 'now-playing', x: 0, y: 0, width: 320, height: 90, rotation: 0, zIndex: 0,
+  props: { refreshIntervalMs: 2500, showAlbum: true },
+}]);
+assert(collectAssetCopies(nowPlayingProject).length === 0, 'a now-playing item never produces any asset copies (text only, no image)');
+
+const nowPlayingHtml = buildSceneHtml(nowPlayingProject, {});
+assert(nowPlayingHtml.includes('item-now-playing'), 'the now-playing item is rendered');
+assert(nowPlayingHtml.includes('nowplaying-np1-0-title') && nowPlayingHtml.includes('nowplaying-np1-0-artist'), "the now-playing item's title/artist elements use instance-scoped ids");
+assert(nowPlayingHtml.includes('opacity: 0'), 'starts hidden until the inlined script confirms something is actually playing');
+assert(nowPlayingHtml.includes('REFRESH_MS = 2500'), 'the configured refresh interval reaches the inlined script');
+assert(nowPlayingHtml.includes('127.0.0.1:5759'), "the now-playing item's script polls the local now-playing server");
+
 // ---- buildSceneHtml: items sort by zIndex regardless of array order ----
 const outOfOrder = baseProject([
   { id: 'top', type: 'frame', x: 0, y: 0, width: 10, height: 10, rotation: 0, zIndex: 5,

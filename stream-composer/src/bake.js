@@ -20,6 +20,7 @@ import { buildCountdownTimerScript } from './countdown-timer-engine.js';
 import { buildPngtuberScript } from './pngtuber-engine.js';
 import { buildViewerPetScript } from './viewer-pet-engine.js';
 import { buildPetRosterScript } from './pet-roster-engine.js';
+import { buildNowPlayingScript } from './now-playing-engine.js';
 
 // Escapes text for safe use inside an HTML attribute or text node.
 function escapeHtml(s) {
@@ -426,6 +427,41 @@ function renderPetRosterItem(item, instanceId, assetPathsById) {
   return { html, script };
 }
 
+// ---- NOW PLAYING --------------------------------------------------------
+// No asset copy needed - text only in v1, no album art. Starts hidden
+// (opacity 0, no `.is-visible` class) so an idle/no-music state doesn't
+// show an empty card sitting on screen - the inlined script only adds
+// `.is-visible` once it actually has a real, currently-playing track.
+function renderNowPlayingItem(item, instanceId) {
+  const html = `
+<div class="item item-now-playing" style="${wrapperStyle(item)}">
+  <style>
+    #${instanceId}-wrap {
+      width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center;
+      padding: 10px 14px; box-sizing: border-box; border-radius: 10px;
+      background: rgba(10,10,18,0.75); font-family: 'Inter', sans-serif; color: #f2f1f9;
+      opacity: 0; transform: translateY(6px); transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    #${instanceId}-wrap.is-visible { opacity: 1; transform: translateY(0); }
+    #${instanceId}-eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7cffb4; margin-bottom: 4px; }
+    #${instanceId}-title { font-size: 16px; font-weight: 700; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #${instanceId}-artist { font-size: 13px; color: #d6d4e8; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #${instanceId}-album { font-size: 11px; color: #918eae; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #${instanceId}-status { font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; display: none; }
+  </style>
+  <div id="${instanceId}-wrap">
+    <div id="${instanceId}-eyebrow">Now Playing</div>
+    <div id="${instanceId}-title"></div>
+    <div id="${instanceId}-artist"></div>
+    <div id="${instanceId}-album"></div>
+  </div>
+  <div id="${instanceId}-status"></div>
+</div>`;
+
+  const script = buildNowPlayingScript(instanceId, item.props);
+  return { html, script };
+}
+
 // ---- ASSET COLLECTION -------------------------------------------------
 // Every `image` item needs its source file copied into the output's
 // assets/ folder, and so does every popup-slide item's slide that uses a
@@ -516,6 +552,7 @@ export function buildSceneHtml(project, assetPathsById) {
     if (item.type === 'pngtuber') return renderPngtuberItem(item, `pngtuber-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     if (item.type === 'viewer-pet') return renderViewerPetItem(item, `pet-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     if (item.type === 'pet-roster') return renderPetRosterItem(item, `roster-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
+    if (item.type === 'now-playing') return renderNowPlayingItem(item, `nowplaying-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
     return { html: '', script: '' };
   });
 

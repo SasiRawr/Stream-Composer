@@ -32,4 +32,6 @@ base64 = "0.22"
 # thread rather than pulling in a streaming/async body-reading dependency
 # just for this one feature.
 reqwest = { version = "0.13", features = ["blocking"] }
+windows = { version = "0.62.2", features = ["Media_Control", "Foundation", "Storage_Streams"] }
+tiny_http = "0.12.0"
 

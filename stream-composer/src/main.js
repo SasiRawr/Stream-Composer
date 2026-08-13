@@ -195,6 +195,12 @@ function defaultPropsFor(type) {
       maxPets: 6,              // roster cap — the N most-recently-active chatters, oldest evicted when full
     };
   }
+  if (type === 'now-playing') {
+    return {
+      refreshIntervalMs: 2000, // how often to re-poll the local now-playing server
+      showAlbum: true,
+    };
+  }
   return {};
 }
 
@@ -206,6 +212,7 @@ function defaultSizeFor(type) {
   if (type === 'pngtuber') return { width: 320, height: 320 };    // roughly square, typical character-art proportions
   if (type === 'viewer-pet') return { width: 180, height: 180 };  // smaller than pngtuber — a corner critter, not a main character
   if (type === 'pet-roster') return { width: 500, height: 220 };  // wide, flat strip — room for several pets to wander side to side
+  if (type === 'now-playing') return { width: 340, height: 100 }; // a flat "now playing" card
   return { width: 300, height: 300 };
 }
 
@@ -448,6 +455,7 @@ const PLACEHOLDER_ACCENTS = {
   'pngtuber': '#ff6ec4',
   'viewer-pet': '#7cffb4',
   'pet-roster': '#5ec8ff',
+  'now-playing': '#a8e05f',
 };
 
 function createRectFabricObject(item) {
@@ -591,7 +599,7 @@ function deleteSelectedItem() {
 const LIBRARY_TYPE_LABELS = {
   frame: 'Frame / Border', image: 'Image', 'popup-slide': 'Popup Slide',
   'chat-overlay': 'Chat + TTS Overlay', 'countdown-timer': 'Countdown Timer', pngtuber: 'PNGTuber',
-  'viewer-pet': 'Viewer Pet', 'pet-roster': 'Chat Pet Roster',
+  'viewer-pet': 'Viewer Pet', 'pet-roster': 'Chat Pet Roster', 'now-playing': 'Now Playing',
 };
 
 let libraryEntries = [];
@@ -730,6 +738,7 @@ function renderPropertiesPanel() {
   if (item.type === 'pngtuber') return renderPngtuberProperties(item, body);
   if (item.type === 'viewer-pet') return renderViewerPetProperties(item, body);
   if (item.type === 'pet-roster') return renderPetRosterProperties(item, body);
+  if (item.type === 'now-playing') return renderNowPlayingProperties(item, body);
 }
 
 function renderFrameProperties(item, body) {
@@ -2379,6 +2388,30 @@ function renderPetRosterProperties(item, body) {
   ['pf-rosterPlatform', 'pf-rosterChannelName', 'pf-maxPets'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
 }
 
+function renderNowPlayingProperties(item, body) {
+  const p = item.props;
+
+  body.innerHTML = `
+    <div class="field">
+      <label>Refresh interval (<span id="pf-npRefreshValue">${p.refreshIntervalMs ?? 2000}</span>ms)</label>
+      <input type="range" id="pf-npRefresh" min="500" max="10000" step="250" value="${p.refreshIntervalMs ?? 2000}">
+      <div class="hint">How often it re-checks what's playing. Lower feels snappier when tracks change; higher is gentler on your system.</div>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="pf-npShowAlbum" ${p.showAlbum !== false ? 'checked' : ''}> Show album name</label>
+    </div>
+    <div class="hint">Shows whatever's currently playing on this PC — Spotify, a YouTube Music tab, Apple Music, anything Windows itself tracks as "now playing." No account, login, or API key needed. Automatically hides itself when nothing's playing.</div>
+    <div class="hint"><strong>Only works while Stream Composer Suite is running on this PC</strong> (it can be minimized) — closing the app fully stops this from updating, same as the local TTS engines.</div>
+  `;
+
+  const applyGeneral = () => {
+    p.refreshIntervalMs = parseInt(document.getElementById('pf-npRefresh').value, 10) || 2000;
+    p.showAlbum = document.getElementById('pf-npShowAlbum').checked;
+    document.getElementById('pf-npRefreshValue').textContent = document.getElementById('pf-npRefresh').value;
+  };
+  ['pf-npRefresh', 'pf-npShowAlbum'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
+}
+
 function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -3011,6 +3044,7 @@ window.addEventListener('DOMContentLoaded', () => {
     addPngtuberBtn: document.getElementById('addPngtuberBtn'),
     addViewerPetBtn: document.getElementById('addViewerPetBtn'),
     addPetRosterBtn: document.getElementById('addPetRosterBtn'),
+    addNowPlayingBtn: document.getElementById('addNowPlayingBtn'),
     canvasSizeLabel: document.getElementById('canvasSizeLabel'),
     fabricCanvasEl: document.getElementById('fabricCanvas'),
     propertiesBody: document.getElementById('propertiesBody'),
@@ -3056,6 +3090,7 @@ window.addEventListener('DOMContentLoaded', () => {
   els.addPngtuberBtn.addEventListener('click', () => addItem('pngtuber'));
   els.addViewerPetBtn.addEventListener('click', () => addItem('viewer-pet'));
   els.addPetRosterBtn.addEventListener('click', () => addItem('pet-roster'));
+  els.addNowPlayingBtn.addEventListener('click', () => addItem('now-playing'));
   els.deleteItemBtn.addEventListener('click', deleteSelectedItem);
   els.saveToLibraryBtn.addEventListener('click', saveSelectedItemToLibrary);
   loadLibrary();

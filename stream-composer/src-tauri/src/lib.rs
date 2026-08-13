@@ -97,6 +97,114 @@ fn resolve_app_data_path(app: tauri::AppHandle, filename: String) -> Result<Stri
     Ok(dir.join(filename).to_string_lossy().to_string())
 }
 
+/// The current track info from Windows' own OS-level "Now Playing" media
+/// session (System Media Transport Controls - the same source that
+/// populates the volume flyout's mini-player). One integration covers
+/// ANY app that hooks into it - Spotify, a YouTube Music browser tab, the
+/// Apple Music Windows app, whatever - instead of building a separate
+/// OAuth/API-key integration per streaming service. `GetCurrentSession()`
+/// returns whichever session Windows currently considers "the" active one
+/// (usually whatever was most recently played/interacted with) - good
+/// enough for a one-track overlay; picking a *specific* app's session
+/// among several playing at once isn't exposed here in v1.
+///
+/// Unlike everything above this comment, the BAKED scene.html running in
+/// OBS's Browser Source has no Tauri bridge at all (same constraint every
+/// other engine module already works around) and this data only exists
+/// on the Windows side, so a plain Tauri command alone can't reach it.
+/// Same fix as Kokoro/Chatterbox's local TTS sidecars: a tiny local HTTP
+/// server (see now_playing_server_thread below), polled by the baked
+/// script via plain `fetch()`, on port 5759 (5757/5758 already taken).
+#[derive(serde::Serialize)]
+struct NowPlayingInfo {
+    title: String,
+    artist: String,
+    album: String,
+    playing: bool,
+    app_id: String,
+}
+
+async fn now_playing_info_impl() -> Result<Option<NowPlayingInfo>, String> {
+    use windows::Media::Control::{
+        GlobalSystemMediaTransportControlsSessionManager,
+        GlobalSystemMediaTransportControlsSessionPlaybackStatus,
+    };
+
+    let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
+        .map_err(|e| e.to_string())?
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let session = match manager.GetCurrentSession() {
+        Ok(s) => s,
+        Err(_) => return Ok(None), // nothing is playing anywhere right now
+    };
+
+    let props = session
+        .TryGetMediaPropertiesAsync()
+        .map_err(|e| e.to_string())?
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let title = props.Title().map(|h| h.to_string()).unwrap_or_default();
+    let artist = props.Artist().map(|h| h.to_string()).unwrap_or_default();
+    let album = props.AlbumTitle().map(|h| h.to_string()).unwrap_or_default();
+
+    if title.is_empty() && artist.is_empty() {
+        return Ok(None);
+    }
+
+    let playing = session
+        .GetPlaybackInfo()
+        .ok()
+        .and_then(|info| info.PlaybackStatus().ok())
+        .map(|status| status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing)
+        .unwrap_or(false);
+
+    let app_id = session
+        .SourceAppUserModelId()
+        .map(|h| h.to_string())
+        .unwrap_or_default();
+
+    Ok(Some(NowPlayingInfo { title, artist, album, playing, app_id }))
+}
+
+#[tauri::command]
+async fn now_playing_info() -> Result<Option<NowPlayingInfo>, String> {
+    now_playing_info_impl().await
+}
+
+const NOW_PLAYING_SERVER_PORT: u16 = 5759;
+
+/// Runs forever on its own OS thread, started once at app launch (no
+/// explicit Start/Stop step needed, unlike Kokoro/Chatterbox - this has
+/// no model to download and costs nothing to just always be available).
+/// Every request gets a fresh read of whatever's currently playing plus a
+/// permissive CORS header, since the baked scene.html's origin (a local
+/// file opened by OBS's Browser Source) isn't the same as
+/// 127.0.0.1:5759 and the browser will block the fetch without it.
+fn now_playing_server_thread() {
+    std::thread::spawn(|| {
+        let server = match tiny_http::Server::http(("127.0.0.1", NOW_PLAYING_SERVER_PORT)) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("now-playing server: could not bind 127.0.0.1:{NOW_PLAYING_SERVER_PORT}: {e}");
+                return;
+            }
+        };
+        for request in server.incoming_requests() {
+            let body = match tauri::async_runtime::block_on(now_playing_info_impl()) {
+                Ok(info) => serde_json::to_string(&info).unwrap_or_else(|_| "null".to_string()),
+                Err(e) => format!("{{\"error\":{}}}", serde_json::to_string(&e).unwrap_or_default()),
+            };
+            let response = tiny_http::Response::from_string(body)
+                .with_header(tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
+                .with_header(tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap());
+            let _ = request.respond(response);
+        }
+    });
+}
+
 /// Opens a URL with whatever the operating system's default browser is.
 /// Used for single-item live preview (e.g. previewing a popup-slide item
 /// without doing a full Bake first): a temp scene.html is written, then
@@ -508,6 +616,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
+        .setup(|_app| {
+            now_playing_server_thread();
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             pick_project_folder,
             pick_image_file,
@@ -517,6 +629,7 @@ pub fn run() {
             write_binary_file,
             file_exists,
             resolve_app_data_path,
+            now_playing_info,
             preview_overlay,
             copy_to_clipboard,
             kokoro_model_status,

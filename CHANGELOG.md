@@ -4,6 +4,22 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.13.1 — 2026-08-13 (pre-release, pending verification)
+
+A quick patch: a **Now Playing** overlay item, added same-day as an
+urgent follow-up.
+
+### Added
+- **Now Playing** — shows whatever track is currently playing on your
+  PC: Spotify, a YouTube Music browser tab, Apple Music, anything.
+  No login, API key, or account linking needed — it reads straight from
+  Windows' own "now playing" system (the same thing that runs the volume
+  flyout's mini-player), so one integration covers every player instead
+  of a separate one per streaming service. Automatically hides itself
+  when nothing's playing. Only updates while Stream Composer Suite
+  itself is running on the PC (can be minimized) — same requirement as
+  the local Kokoro/Chatterbox TTS engines.
+
 ## v1.13.0 — 2026-08-12 (pre-release, pending verification)
 
 A new item type: **Chat Pet Roster** — one pet per active chatter,
