@@ -7,7 +7,7 @@
 // Run with: node src/pngtuber-engine.test.mjs
 // ============================================================================
 
-import { buildPngtuberScript } from './pngtuber-engine.js';
+import { buildPngtuberScript, computeCalibratedThreshold } from './pngtuber-engine.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -84,6 +84,23 @@ checkSyntax(defaultScript, 'default');
 const scriptA = buildPngtuberScript('pngtuber-A', { idle: 'a.png' }, {});
 const scriptB = buildPngtuberScript('pngtuber-B', { idle: 'c.png' }, {});
 assert(!scriptA.includes('pngtuber-B') && !scriptB.includes('pngtuber-A'), "two different instances' scripts don't reference each other's element ids");
+
+// ---- computeCalibratedThreshold: the editor-side Auto-calibrate button's ----
+// midpoint-formula, extracted so it's testable without a real mic/browser.
+assert(computeCalibratedThreshold(0.02, 0.30) === 12, 'a clear silence/speaking gap (0.02 -> 0.30) calibrates to silence + 35% of the gap, rounded to a whole percent');
+assert(computeCalibratedThreshold(0, 0.20) === 7, 'calibrates correctly even with a near-zero silence floor');
+
+const closeLevels = computeCalibratedThreshold(0.05, 0.055);
+assert(closeLevels === null, 'silence and speaking levels too close together (e.g. user never talked, or a noisy room) returns null instead of a useless threshold');
+
+const speakingQuieterThanSilence = computeCalibratedThreshold(0.10, 0.08);
+assert(speakingQuieterThanSilence === null, 'a negative gap (speaking measured quieter than silence) also returns null rather than a nonsensical threshold');
+
+const lowEnd = computeCalibratedThreshold(0, 0.01);
+assert(lowEnd === null, 'a tiny overall gap right at the noise floor still returns null rather than a threshold of 0-1%');
+
+const highEnd = computeCalibratedThreshold(0.5, 1.5);
+assert(highEnd === 80, 'a calibrated result above the slider max (80%) clamps to 80, matching the properties panel slider range');
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

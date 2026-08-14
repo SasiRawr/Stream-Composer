@@ -4,6 +4,53 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.15.0 — 2026-08-14 (pre-release, pending verification)
+
+Two fast-follows, orchestrated across a team of specialist agents in one
+pass: the chat-bubble/star-burst layer originally scoped out of Chat Pet
+Roster v1, and a real fix for the PNGTuber mic-sensitivity pain Harvey
+flagged in v1.12.0.
+
+### Added
+- **Chat Pet Roster: chat bubbles + star-burst.** When a chatter's pet
+  reacts, it now shows a speech bubble with their actual message (capped
+  at 80 characters) above the pet, plus a brief sparkle burst. Both are
+  togglable per-item, with a configurable bubble display duration.
+  Twitch and Kick's connectors now extract real message text (previously
+  only username), not just a fresh feature — a genuine capability
+  addition to both platform connectors.
+- **PNGTuber: live mic meter + Auto-calibrate.** The properties panel now
+  has a "Test mic" button showing your real mic level against the
+  current threshold live, and an "Auto-calibrate" button that samples
+  ~3s of quiet plus ~3s of normal talking and sets the threshold for
+  you — no more guessing at a raw 0-100 number.
+
+### Investigated and deliberately not built
+- **Tying PNGTuber's talking-trigger to OBS's own voice activation**
+  (the ask behind the mic-calibration work) turned out to be technically
+  impossible as asked — obs-websocket's protocol has no event or request
+  that reports whether an audio input's Noise Gate/VAD is currently
+  "open." Confirmed against the full official protocol event list, not
+  assumed. A different, genuinely separate feature — reacting to an
+  arbitrary OBS audio source's volume (e.g. Discord or game audio)
+  instead of the microphone — is real and buildable, but shelved as
+  speculative until there's an actual request for it; it would trade
+  this feature's current zero-dependency reliability (works standalone
+  once baked, no desktop app required) for one that needs Stream
+  Composer running and connected to OBS the whole time you're live.
+
+### Fixed (caught in review before shipping)
+- A race condition where clicking "Test mic"/"Auto-calibrate" and then
+  switching canvas items before the OS permission prompt resolved could
+  leave a live microphone stream running with nothing left to stop it.
+- Chat bubbles could render clipped or invisible when a pet wandered
+  near the top or side edge of its stage (the stage clips overflow) —
+  pets now keep clearance from the edges so their bubble always has
+  room to show.
+- Minor: an evicted pet's pending bubble-hide timer is now cleared
+  instead of firing harmlessly later; long messages with emoji no
+  longer risk truncating mid-character.
+
 ## v1.14.0 — 2026-08-13 (pre-release, pending verification)
 
 **OBS WebSocket automation** — the last of the original v1.x.0 series'

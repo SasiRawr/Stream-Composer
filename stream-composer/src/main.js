@@ -34,6 +34,7 @@ import {
 } from './chat-platforms.js';
 import { defaultBackgroundProps, drawBackground } from './background-generator.js';
 import { defaultPollyProps, POLLY_VOICE_SUGGESTIONS } from './polly-tts.js';
+import { computeCalibratedThreshold } from './pngtuber-engine.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -193,6 +194,9 @@ function defaultPropsFor(type) {
       platformKey: 'twitch',   // 'twitch' | 'kick' — same platform set as Viewer Pet
       channelName: '',
       maxPets: 6,              // roster cap — the N most-recently-active chatters, oldest evicted when full
+      bubbleEnabled: true,     // fast-follow: show the chatter's message in a bubble above their pet
+      starBurstEnabled: true,  // fast-follow: brief sparkle burst on reaction
+      bubbleDisplayMs: 4000,   // how long the message bubble stays up before fading
     };
   }
   if (type === 'now-playing') {
@@ -725,6 +729,11 @@ function selectItem(itemId) {
 }
 
 function renderPropertiesPanel() {
+  // Every render replaces the panel body (a new item selected, deselected,
+  // or the same item's panel rebuilt after a style change) - stop any live
+  // PNGTuber mic test session first so we never leave a hot mic/AudioContext
+  // running against DOM elements that are about to be thrown away.
+  stopMicPreview();
   const body = els.propertiesBody;
   const item = project && selectedItemId ? project.items.find((i) => i.id === selectedItemId) : null;
   if (!item) {
@@ -2200,6 +2209,115 @@ const PNGTUBER_STYLE_LABELS = {
   mouthFlap: 'Mouth Flap (body + mouth cutout)',
 };
 
+// ---- PNGTuber mic level preview (editor-side "Test mic" / Auto-calibrate) --
+// Same RMS-from-time-domain-samples math pngtuber-engine.js bakes into
+// scene.html, but running live here in the editor so the properties panel
+// can show real feedback instead of a blind 0-100 number. Only one of these
+// runs at a time (module-scoped, not per-item) and it's always torn down by
+// stopMicPreview() — called at the top of renderPropertiesPanel() so a panel
+// switch/rebuild/deselect never leaves the mic or its AudioContext running.
+let micPreview = null; // { stream, audioCtx, analyser, dataArray, rafHandle, lastRms }
+
+// Bumped by every stopMicPreview() call (even when micPreview is already
+// null) and captured at the top of every startMicPreview() call. Needed
+// because micPreview itself isn't assigned until AFTER the getUserMedia()
+// permission prompt resolves - without this, a panel switch that fires
+// while that prompt is still pending sees micPreview === null and no-ops,
+// then the prompt resolves and startMicPreview() proceeds to spin up a
+// live AudioContext + rAF loop for a properties panel that's already gone
+// (an orphaned hot mic with nothing left to stop it). Comparing generations
+// after the await lets startMicPreview() detect it was cancelled mid-flight.
+let micPreviewGeneration = 0;
+
+function stopMicPreview() {
+  micPreviewGeneration++;
+  if (!micPreview) return;
+  if (micPreview.rafHandle) cancelAnimationFrame(micPreview.rafHandle);
+  micPreview.stream.getTracks().forEach((t) => t.stop());
+  micPreview.audioCtx.close().catch(() => {});
+  micPreview = null;
+}
+window.addEventListener('beforeunload', stopMicPreview);
+
+async function startMicPreview(onLevel) {
+  const myGeneration = ++micPreviewGeneration;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (myGeneration !== micPreviewGeneration) {
+      // Cancelled while the permission prompt was pending (panel switched
+      // away, or another startMicPreview()/stopMicPreview() call happened
+      // in the meantime) - release the now-orphaned stream and bail before
+      // ever creating a live AudioContext nothing will tear down.
+      stream.getTracks().forEach((t) => t.stop());
+      return false;
+    }
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    const dataArray = new Uint8Array(analyser.fftSize);
+    source.connect(analyser);
+    micPreview = { stream, audioCtx, analyser, dataArray, rafHandle: null, lastRms: 0 };
+
+    const frame = () => {
+      if (!micPreview) return; // stopped mid-flight (panel switched away)
+      micPreview.analyser.getByteTimeDomainData(micPreview.dataArray);
+      // Same RMS-of-centered-8-bit-samples measure as pngtuber-engine.js's
+      // frame() — keep the editor's live meter reading the same "loudness"
+      // as the baked output so what the user sees here matches what OBS sees.
+      let sumSquares = 0;
+      for (let i = 0; i < micPreview.dataArray.length; i++) {
+        const centered = (micPreview.dataArray[i] - 128) / 128;
+        sumSquares += centered * centered;
+      }
+      const rms = Math.sqrt(sumSquares / micPreview.dataArray.length);
+      micPreview.lastRms = rms;
+      if (onLevel) onLevel(rms);
+      micPreview.rafHandle = requestAnimationFrame(frame);
+    };
+    frame();
+    return true;
+  } catch (e) {
+    console.warn('PNGTuber test-mic: could not access the microphone', e);
+    return false;
+  }
+}
+
+// Visual ceiling for the meter bar, in the same 0-1 RMS units as THRESHOLD.
+// Typical speech RMS rarely gets near 1.0 (full-scale clipping), so mapping
+// 0-1 straight onto the bar would squeeze all the useful movement into a
+// sliver at the left edge — scaling against a lower, realistic ceiling
+// instead gives normal talking levels real visible travel on the bar.
+const MIC_METER_VISUAL_MAX = 0.5;
+function rmsToMeterPercent(rms) {
+  return Math.max(0, Math.min(100, (rms / MIC_METER_VISUAL_MAX) * 100));
+}
+
+function collectRmsSamples(durationMs, onSecondsLeft) {
+  return new Promise((resolve) => {
+    const samples = [];
+    const sampleIv = setInterval(() => {
+      if (micPreview) samples.push(micPreview.lastRms);
+    }, 50);
+    let secondsLeft = Math.ceil(durationMs / 1000);
+    if (onSecondsLeft) onSecondsLeft(secondsLeft);
+    const tickIv = setInterval(() => {
+      secondsLeft -= 1;
+      if (onSecondsLeft) onSecondsLeft(Math.max(secondsLeft, 0));
+    }, 1000);
+    setTimeout(() => {
+      clearInterval(sampleIv);
+      clearInterval(tickIv);
+      resolve(samples);
+    }, durationMs);
+  });
+}
+
+function average(nums) {
+  if (!nums.length) return 0;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
 function pngtuberImagePicker(fieldId, label, pathValue, btnId) {
   return `
     <div class="field"><label>${label}</label>
@@ -2260,11 +2378,23 @@ function renderPngtuberProperties(item, body) {
       <div class="hint">Lower = reacts more easily (picks up quieter sounds). Raise this if it's triggering on background noise or your mic's natural hiss.</div>
     </div>
     <div class="field">
+      <label>Mic level</label>
+      <div class="mic-meter">
+        <div class="mic-meter-fill" id="pf-micMeterFill"></div>
+        <div class="mic-meter-marker" id="pf-micMeterMarker" style="left:${rmsToMeterPercent(p.micThreshold / 100)}%"></div>
+      </div>
+      <div class="button-row">
+        <button class="secondary" id="pf-testMicBtn" type="button">Test mic</button>
+        <button class="secondary" id="pf-autoCalibrateBtn" type="button">Auto-calibrate</button>
+      </div>
+      <div class="hint" id="pf-micStatus">Click "Test mic" to see your live mic level here in the editor — the orange line marks the current threshold.</div>
+    </div>
+    <div class="field">
       <label>Hold time after you stop talking (ms)</label>
       <input type="number" id="pf-holdMs" min="0" max="2000" step="50" value="${p.holdMs}">
       <div class="hint">Keeps the talking reaction up briefly through short pauses (like mid-sentence breaths) instead of flickering back to idle on every gap.</div>
     </div>
-    <div class="hint">Reacts to your live microphone only in the baked output (in OBS) — there's no live preview here in the editor. The first time this loads in OBS, you'll need to grant it microphone access: right-click the Browser Source → Interact → allow the microphone prompt, then refresh.</div>
+    <div class="hint">The mic reaction itself only runs in the baked output (in OBS) — the meter above is just an editor-side preview to help you tune the sensitivity. The first time the baked scene loads in OBS, you'll need to grant it microphone access separately: right-click the Browser Source → Interact → allow the microphone prompt, then refresh.</div>
   `;
 
   document.getElementById('pf-pngtuberStyle').addEventListener('change', (e) => {
@@ -2288,10 +2418,95 @@ function renderPngtuberProperties(item, body) {
   wireImagePicker('pf-pickMouthOpenImage', 'mouthOpenImagePath');
   wireImagePicker('pf-pickMouthClosedImage', 'mouthClosedImagePath');
 
+  // Panel-still-active guard for the async Test mic / Auto-calibrate flows
+  // below — if the user switches items or the style dropdown rebuilds this
+  // panel mid-flow, renderPropertiesPanel() already called stopMicPreview()
+  // and these DOM ids are gone; bail rather than write into a dead panel.
+  const micStatusEl = () => document.getElementById('pf-micStatus');
+
+  const updateMeter = (rms) => {
+    const fillEl = document.getElementById('pf-micMeterFill');
+    if (!fillEl) return;
+    fillEl.style.width = rmsToMeterPercent(rms) + '%';
+    fillEl.classList.toggle('is-above-threshold', rms * 100 > p.micThreshold);
+  };
+
+  document.getElementById('pf-testMicBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('pf-testMicBtn');
+    if (micPreview) {
+      stopMicPreview();
+      btn.textContent = 'Test mic';
+      if (micStatusEl()) micStatusEl().textContent = 'Click "Test mic" to see your live mic level here in the editor — the orange line marks the current threshold.';
+      const fillEl = document.getElementById('pf-micMeterFill');
+      if (fillEl) fillEl.style.width = '0%';
+      return;
+    }
+    btn.disabled = true;
+    if (micStatusEl()) micStatusEl().textContent = 'Requesting microphone access…';
+    const ok = await startMicPreview(updateMeter);
+    if (!micStatusEl()) return; // panel switched away while awaiting permission
+    btn.disabled = false;
+    if (!ok) {
+      micStatusEl().textContent = 'Mic access denied or unavailable — allow microphone access for this app, then try again.';
+      return;
+    }
+    btn.textContent = 'Stop test';
+    micStatusEl().textContent = 'Listening… talk normally to see your level move.';
+  });
+
+  document.getElementById('pf-autoCalibrateBtn').addEventListener('click', async () => {
+    const testBtn = document.getElementById('pf-testMicBtn');
+    const calBtn = document.getElementById('pf-autoCalibrateBtn');
+    calBtn.disabled = true;
+    testBtn.disabled = true;
+
+    if (!micPreview) {
+      if (micStatusEl()) micStatusEl().textContent = 'Requesting microphone access…';
+      const ok = await startMicPreview(updateMeter);
+      if (!micStatusEl()) return; // panel switched away while awaiting permission
+      if (!ok) {
+        micStatusEl().textContent = 'Mic access denied or unavailable — allow microphone access for this app, then try again.';
+        calBtn.disabled = false;
+        testBtn.disabled = false;
+        return;
+      }
+      testBtn.textContent = 'Stop test';
+    }
+
+    const silenceSamples = await collectRmsSamples(3000, (secLeft) => {
+      if (micStatusEl()) micStatusEl().textContent = `Stay quiet — measuring silence… ${secLeft}`;
+    });
+    if (!micStatusEl()) return; // panel switched away mid-calibration
+
+    micStatusEl().textContent = 'Now say something normally…';
+    const speakingSamples = await collectRmsSamples(3000, (secLeft) => {
+      if (micStatusEl()) micStatusEl().textContent = `Now say something normally… ${secLeft}`;
+    });
+    if (!micStatusEl()) return; // panel switched away mid-calibration
+
+    const silenceRms = average(silenceSamples);
+    const speakingRms = average(speakingSamples);
+    const calibrated = computeCalibratedThreshold(silenceRms, speakingRms);
+
+    if (calibrated === null) {
+      micStatusEl().textContent = 'Speaking level was too close to the silence floor to calibrate — make sure you actually talk during the second phase, then try Auto-calibrate again.';
+    } else {
+      p.micThreshold = calibrated;
+      document.getElementById('pf-micThreshold').value = calibrated;
+      document.getElementById('pf-micThresholdValue').textContent = calibrated;
+      document.getElementById('pf-micMeterMarker').style.left = rmsToMeterPercent(calibrated / 100) + '%';
+      micStatusEl().textContent = `Calibrated — mic sensitivity set to ${calibrated}%.`;
+    }
+
+    calBtn.disabled = false;
+    testBtn.disabled = false;
+  });
+
   const applyGeneral = () => {
     p.micThreshold = parseInt(document.getElementById('pf-micThreshold').value, 10) || 15;
     p.holdMs = parseInt(document.getElementById('pf-holdMs').value, 10) || 0;
     document.getElementById('pf-micThresholdValue').textContent = document.getElementById('pf-micThreshold').value;
+    document.getElementById('pf-micMeterMarker').style.left = rmsToMeterPercent(p.micThreshold / 100) + '%';
     if (style === 'mouthFlap') {
       p.mouthWidthPercent = parseInt(document.getElementById('pf-mouthWidthPercent').value, 10) || 30;
       p.mouthLeftPercent = parseInt(document.getElementById('pf-mouthLeftPercent').value, 10) || 50;
@@ -2370,6 +2585,16 @@ function renderPetRosterProperties(item, body) {
       <input type="range" id="pf-maxPets" min="1" max="20" step="1" value="${p.maxPets ?? 6}">
       <div class="hint">The most-recently-active chatters get a pet. Once this many are on screen, a new chatter's pet replaces whoever's been quietest longest.</div>
     </div>
+    <div class="field">
+      <label><input type="checkbox" id="pf-rosterBubbleEnabled" ${p.bubbleEnabled !== false ? 'checked' : ''}> Show their message in a bubble above the pet</label>
+    </div>
+    <div class="field">
+      <label>Bubble display (<span id="pf-rosterBubbleMsValue">${(p.bubbleDisplayMs ?? 4000) / 1000}</span>s)</label>
+      <input type="range" id="pf-rosterBubbleMs" min="1" max="15" step="0.5" value="${(p.bubbleDisplayMs ?? 4000) / 1000}">
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="pf-rosterStarBurstEnabled" ${p.starBurstEnabled !== false ? 'checked' : ''}> Star-burst sparkle on reaction</label>
+    </div>
     <div class="hint">One pet per active chatter, each wandering freely and bouncing when its own chatter sends a message — only reacts in the baked output (in OBS), there's no live preview here in the editor.</div>
   `;
 
@@ -2385,8 +2610,12 @@ function renderPetRosterProperties(item, body) {
     p.channelName = document.getElementById('pf-rosterChannelName').value;
     p.maxPets = parseInt(document.getElementById('pf-maxPets').value, 10) || 6;
     document.getElementById('pf-maxPetsValue').textContent = document.getElementById('pf-maxPets').value;
+    p.bubbleEnabled = document.getElementById('pf-rosterBubbleEnabled').checked;
+    p.starBurstEnabled = document.getElementById('pf-rosterStarBurstEnabled').checked;
+    p.bubbleDisplayMs = Math.round((parseFloat(document.getElementById('pf-rosterBubbleMs').value) || 4) * 1000);
+    document.getElementById('pf-rosterBubbleMsValue').textContent = document.getElementById('pf-rosterBubbleMs').value;
   };
-  ['pf-rosterPlatform', 'pf-rosterChannelName', 'pf-maxPets'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
+  ['pf-rosterPlatform', 'pf-rosterChannelName', 'pf-maxPets', 'pf-rosterBubbleEnabled', 'pf-rosterBubbleMs', 'pf-rosterStarBurstEnabled'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
 }
 
 function renderNowPlayingProperties(item, body) {

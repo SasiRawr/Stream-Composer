@@ -227,6 +227,31 @@ button.block {
   padding: 8px 10px;
 }
 
+.mic-meter {
+  position: relative;
+  height: 14px;
+  background: #0a0a12;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.mic-meter-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  background: linear-gradient(90deg, #7c5cff, #a594ff);
+  border-radius: 7px 0 0 7px;
+  transition: width 60ms linear;
+}
+.mic-meter-fill.is-above-threshold { background: linear-gradient(90deg, #7c5cff, #4ade80); }
+.mic-meter-marker {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #ffb454;
+}
+
 .starter-template-option {
   display: flex;
   gap: 10px;

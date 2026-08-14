@@ -32,6 +32,9 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
   const platform = props.platformKey || 'twitch';
   const channelName = (props.channelName || '').trim();
   const maxPets = Math.max(1, Math.min(30, props.maxPets ?? 6));
+  const bubbleEnabled = props.bubbleEnabled !== false;
+  const starBurstEnabled = props.starBurstEnabled !== false;
+  const bubbleDisplayMs = Math.max(1000, props.bubbleDisplayMs ?? 4000);
 
   // Resolved at GENERATION time, not baked as a runtime if/else - same
   // "avoid leaving both connectors' call-site text in every output"
@@ -46,11 +49,47 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
 (function () {
   const PET_SRC = ${JSON.stringify(petAssetPath)};
   const MAX_PETS = ${JSON.stringify(maxPets)};
+  const BUBBLE_ENABLED = ${JSON.stringify(bubbleEnabled)};
+  const STARBURST_ENABLED = ${JSON.stringify(starBurstEnabled)};
+  const BUBBLE_DISPLAY_MS = ${JSON.stringify(bubbleDisplayMs)};
+  const BUBBLE_MAX_CHARS = 80; // long chat messages truncate with an ellipsis rather than blowing out the bubble
 
   const stageEl = document.getElementById('${instanceId}-stage');
   const statusEl = document.getElementById('${instanceId}-status');
 
-  const pets = new Map(); // username -> { el, x, y, vx, vy, size, lastActiveAt }
+  const pets = new Map(); // username -> { wrapperEl, imgEl, bubbleEl, x, y, vx, vy, size, lastActiveAt, bubbleHideTimer }
+
+  // The chat bubble renders directly above the pet (bottom:100%, see
+  // bake.js's .pet-roster-bubble CSS) and is horizontally centered on it
+  // with max-width:160px - and the stage clips anything outside its
+  // bounds (overflow:hidden). Left unconstrained, wander lets pets roam
+  // right up to the top/left/right edges, clipping/hiding their own
+  // bubble. These two margins keep pets far enough from those edges that
+  // the bubble always has room: BUBBLE_TOP_CLEARANCE approximates the
+  // bubble's own height (padding + line + margin-bottom), BUBBLE_HALF_WIDTH
+  // matches half of its CSS max-width.
+  const BUBBLE_TOP_CLEARANCE = 48;
+  const BUBBLE_HALF_WIDTH = 80;
+
+  // Returns the [min, max] range a pet's top-left coordinate may wander
+  // within on one axis, given the stage size on that axis, the pet's own
+  // size, and how much clearance to leave on the LOW side only (e.g. the
+  // top edge for Y, so the bubble above the pet has room) - the high side
+  // is only ever bounded by keeping the pet itself on-stage.
+  function wanderRangeLow(total, size, lowClearance) {
+    const petMax = Math.max(0, total - size);
+    const min = Math.min(lowClearance, petMax);
+    return { min, max: petMax };
+  }
+
+  // Same idea, but clearance applies symmetrically on BOTH sides (e.g. X,
+  // since the bubble can hang off either the left or right of the pet).
+  function wanderRangeBoth(total, size, clearance) {
+    const petMax = Math.max(0, total - size);
+    const min = Math.min(clearance, petMax);
+    const max = Math.max(min, petMax - clearance);
+    return { min, max };
+  }
 
   function randomVelocity() {
     const angle = Math.random() * Math.PI * 2;
@@ -74,6 +113,13 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
     imgEl.alt = '';
     imgEl.className = 'pet-roster-pet';
     wrapperEl.appendChild(imgEl);
+    // Bubble is its own sibling element (not the wrapper or the img) so its
+    // opacity/scale transition never fights the wrapper's position transform
+    // or the img's bounce-keyframe transform - same separation discipline
+    // as the wrapper/img split above.
+    const bubbleEl = document.createElement('div');
+    bubbleEl.className = 'pet-roster-bubble';
+    wrapperEl.appendChild(bubbleEl);
     stageEl.appendChild(wrapperEl);
 
     const w = stageEl.clientWidth || 300;
@@ -82,20 +128,61 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
     wrapperEl.style.width = size + 'px';
     wrapperEl.style.height = size + 'px';
 
+    const xRange = wanderRangeBoth(w, size, BUBBLE_HALF_WIDTH);
+    const yRange = wanderRangeLow(h, size, BUBBLE_TOP_CLEARANCE);
+
     const v = randomVelocity();
     const entry = {
       wrapperEl,
       imgEl,
-      x: Math.random() * Math.max(1, w - size),
-      y: Math.random() * Math.max(1, h - size),
+      bubbleEl,
+      x: xRange.min + Math.random() * Math.max(0, xRange.max - xRange.min),
+      y: yRange.min + Math.random() * Math.max(0, yRange.max - yRange.min),
       vx: v.vx,
       vy: v.vy,
       size,
       lastActiveAt: performance.now(),
+      bubbleHideTimer: null,
     };
     pets.set(username, entry);
     positionPet(entry);
     return entry;
+  }
+
+  function truncateMessage(messageText) {
+    const trimmed = messageText.trim();
+    if (trimmed.length <= BUBBLE_MAX_CHARS) return trimmed;
+    // Array.from() iterates by Unicode code point, not UTF-16 code unit, so
+    // this never slices a surrogate pair in half (which .slice() can do and
+    // which would corrupt/break an emoji sitting right at the cut point).
+    return Array.from(trimmed).slice(0, BUBBLE_MAX_CHARS).join('') + '…';
+  }
+
+  function showBubble(entry, messageText) {
+    // textContent, never innerHTML - messageText is untrusted chat content.
+    entry.bubbleEl.textContent = truncateMessage(messageText);
+    entry.bubbleEl.classList.add('is-visible');
+    if (entry.bubbleHideTimer) clearTimeout(entry.bubbleHideTimer);
+    entry.bubbleHideTimer = setTimeout(function () {
+      entry.bubbleEl.classList.remove('is-visible');
+    }, BUBBLE_DISPLAY_MS);
+  }
+
+  // A handful of small star elements drift outward from the pet and remove
+  // themselves once their own CSS animation completes - nothing left to
+  // clean up on a timer, no leaked elements.
+  function spawnStarBurst(entry) {
+    const STAR_COUNT = 6;
+    for (let i = 0; i < STAR_COUNT; i++) {
+      const starEl = document.createElement('div');
+      starEl.className = 'pet-roster-star';
+      const angle = (Math.PI * 2 * i) / STAR_COUNT + Math.random() * 0.4;
+      const distance = 18 + Math.random() * 12;
+      starEl.style.setProperty('--star-dx', Math.cos(angle) * distance + 'px');
+      starEl.style.setProperty('--star-dy', Math.sin(angle) * distance + 'px');
+      entry.wrapperEl.appendChild(starEl);
+      starEl.addEventListener('animationend', function () { starEl.remove(); });
+    }
   }
 
   function evictLeastRecentlyActive() {
@@ -105,7 +192,9 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
       if (entry[1].lastActiveAt < oldestAt) { oldestAt = entry[1].lastActiveAt; oldestUser = entry[0]; }
     }
     if (oldestUser !== null) {
-      pets.get(oldestUser).wrapperEl.remove();
+      const oldEntry = pets.get(oldestUser);
+      if (oldEntry.bubbleHideTimer) clearTimeout(oldEntry.bubbleHideTimer);
+      oldEntry.wrapperEl.remove();
       pets.delete(oldestUser);
     }
   }
@@ -113,7 +202,7 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
   // One atomic "this user chatted" entry point - same discipline every
   // other engine module in this app uses, so spawning/evicting/reacting
   // can never desync from each other.
-  function react(username) {
+  function react(username, messageText) {
     if (!username) return;
     let entry = pets.get(username);
     if (!entry) {
@@ -124,6 +213,8 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
     entry.imgEl.classList.remove('is-reacting');
     void entry.imgEl.offsetWidth;
     entry.imgEl.classList.add('is-reacting');
+    if (STARBURST_ENABLED) spawnStarBurst(entry);
+    if (BUBBLE_ENABLED && messageText) showBubble(entry, messageText);
   }
 
   // One shared wander loop drives every pet's free-roam movement + edge
@@ -134,10 +225,10 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
     for (const entry of pets.values()) {
       entry.x += entry.vx;
       entry.y += entry.vy;
-      const maxX = Math.max(0, w - entry.size);
-      const maxY = Math.max(0, h - entry.size);
-      if (entry.x <= 0 || entry.x >= maxX) { entry.vx *= -1; entry.x = Math.min(Math.max(entry.x, 0), maxX); }
-      if (entry.y <= 0 || entry.y >= maxY) { entry.vy *= -1; entry.y = Math.min(Math.max(entry.y, 0), maxY); }
+      const xRange = wanderRangeBoth(w, entry.size, BUBBLE_HALF_WIDTH);
+      const yRange = wanderRangeLow(h, entry.size, BUBBLE_TOP_CLEARANCE);
+      if (entry.x <= xRange.min || entry.x >= xRange.max) { entry.vx *= -1; entry.x = Math.min(Math.max(entry.x, xRange.min), xRange.max); }
+      if (entry.y <= yRange.min || entry.y >= yRange.max) { entry.vy *= -1; entry.y = Math.min(Math.max(entry.y, yRange.min), yRange.max); }
       positionPet(entry);
     }
     requestAnimationFrame(tick);
@@ -160,10 +251,11 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (line.startsWith('PING')) { ws.send('PONG :tmi.twitch.tv'); continue; }
-        const match = line.match(/^(?:@(\\S+) )?:(\\S+)!\\S+@\\S+\\.tmi\\.twitch\\.tv PRIVMSG #\\S+ :/);
+        const match = line.match(/^(?:@(\\S+) )?:(\\S+)!\\S+@\\S+\\.tmi\\.twitch\\.tv PRIVMSG #\\S+ :(.*)$/);
         if (!match) continue;
         const tagsRaw = match[1];
         let username = match[2];
+        const messageText = match[3];
         if (tagsRaw) {
           const pairs = tagsRaw.split(';');
           for (let j = 0; j < pairs.length; j++) {
@@ -175,7 +267,7 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
             }
           }
         }
-        react(username);
+        react(username, messageText);
       }
     };
     ws.onclose = function () { setTimeout(function () { connectTwitch(channel); }, 5000); };
@@ -202,7 +294,8 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
         let inner;
         try { inner = JSON.parse(parsed.data); } catch (e) { return; }
         const username = inner && inner.sender && inner.sender.username;
-        if (username) react(username);
+        const messageText = inner && inner.content;
+        if (username) react(username, messageText);
       };
       ws.onclose = function () { setTimeout(function () { connectKick(channelSlug); }, 5000); };
     } catch (e) {

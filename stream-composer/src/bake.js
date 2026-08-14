@@ -415,6 +415,31 @@ function renderPetRosterItem(item, instanceId, assetPathsById) {
       75% { transform: scale(1.04, 0.96) translateY(2px); }
       100% { transform: scale(1, 1); }
     }
+    /* Bubble is its own sibling of the img inside the wrapper (see
+       pet-roster-engine.js's spawnPet comment) - a plain opacity/scale
+       transition, not a keyframe animation, so it never needs an
+       instance-scoped name the way the bounce/starburst keyframes do. */
+    .pet-roster-bubble {
+      position: absolute; bottom: 100%; left: 50%; margin-bottom: 6px;
+      max-width: 160px; padding: 6px 10px; border-radius: 10px;
+      background: rgba(10,10,18,0.85); color: #f2f1f9;
+      font-family: 'Inter', sans-serif; font-size: 12px; line-height: 1.3;
+      text-align: center; white-space: normal; word-break: break-word;
+      opacity: 0; pointer-events: none;
+      transform: translate(-50%, 4px) scale(0.85);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .pet-roster-bubble.is-visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    .pet-roster-star {
+      position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px;
+      background: radial-gradient(circle, #fff9c4 0%, #ffd54f 60%, transparent 100%);
+      border-radius: 50%; pointer-events: none;
+      animation: ${instanceId}-starburst 0.6s ease-out forwards;
+    }
+    @keyframes ${instanceId}-starburst {
+      0% { transform: translate(0, 0) scale(0.4); opacity: 1; }
+      100% { transform: translate(var(--star-dx), var(--star-dy)) scale(1.1); opacity: 0; }
+    }
     #${instanceId}-status { position: absolute; bottom: 4px; left: 4px; right: 4px; font-family: 'Inter', sans-serif; font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; }
   </style>
   <div id="${instanceId}-wrap">

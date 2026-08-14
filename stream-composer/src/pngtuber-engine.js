@@ -143,3 +143,27 @@ export function buildPngtuberScript(instanceId, assets, props) {
   start();
 })();`;
 }
+
+// Minimum gap (in the same 0-1 RMS units as THRESHOLD above) between a
+// measured silence floor and a measured speaking level for auto-calibration
+// to trust the result. Below this, the mic/room can't reliably tell "quiet"
+// from "talking" (bad mic, room noise as loud as the voice, or the user
+// didn't actually talk during the sampling window) - safer to ask for a
+// retry than bake in a threshold that will either never fire or never let go.
+const MIN_CALIBRATION_GAP = 0.015;
+
+// Editor-side auto-calibrate: given an averaged silence-floor RMS and an
+// averaged speaking RMS (both 0-1, same units as THRESHOLD/micThreshold),
+// pick a sensible mic sensitivity. Sits close to the silence floor rather
+// than the midpoint so quieter talkers still trigger reliably, while still
+// clearing typical room-noise/mic-hiss picked up during the silence sample -
+// a judgment call in the same spirit as HOLD_MS above, not a precise science.
+// Returns a 1-80 percent (matching the properties panel slider's range), or
+// null if the two levels are too close together to calibrate from.
+export function computeCalibratedThreshold(silenceRms, speakingRms) {
+  const gap = speakingRms - silenceRms;
+  if (!(gap > MIN_CALIBRATION_GAP)) return null;
+  const rms = silenceRms + gap * 0.35;
+  const percent = Math.round(rms * 100);
+  return Math.max(1, Math.min(80, percent));
+}
