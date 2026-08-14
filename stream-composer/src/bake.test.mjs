@@ -208,6 +208,36 @@ const pngtuberAllSlotsProject = baseProject([{
 }]);
 assert(collectAssetCopies(pngtuberAllSlotsProject).length === 5, 'all 5 pngtuber image slots are collected whenever set, regardless of the currently-selected style');
 
+// ---- buildSceneHtml: pngtuber 'obs' audio-source mode + itemId threading ----
+// REGRESSION (Bug 1): uses a REALISTIC raw main.js uid() as the item's id
+// ('item-a1b2c3d4', not a short test-only label like 'p7') specifically so
+// this test round-trips through the SAME sanitization bake.js's
+// buildSceneHtml actually applies to build the DOM instanceId
+// ('pngtuber-itema1b2c3d4-0') and confirms the two never get conflated in
+// the baked OBS-poll URL - that conflation (baking the sanitized instanceId
+// where the raw item.id belongs) is exactly how Bug 1 slipped through
+// before: every prior version of this test only checked the URL's string
+// contents, never against a realistic id shaped like what project.json (and
+// src-tauri/src/lib.rs's find_obs_item_settings, which matches against
+// project.json's raw `id` field) actually contains.
+const pngtuberObsProject = baseProject([{
+  id: 'item-a1b2c3d4', type: 'pngtuber', x: 0, y: 0, width: 300, height: 300, rotation: 0, zIndex: 0,
+  props: { style: 'swap', idleImagePath: 'a.png', talkingImagePath: 'b.png', micThreshold: 15, holdMs: 200, audioSource: 'obs', obsInputName: 'Mic' },
+}]);
+const pngtuberObsAssetPaths = { 'item-a1b2c3d4::idle': 'assets/idle.png', 'item-a1b2c3d4::talking': 'assets/talking.png' };
+const pngtuberObsHtml = buildSceneHtml(pngtuberObsProject, pngtuberObsAssetPaths);
+assert(
+  pngtuberObsHtml.includes('itemId=' + encodeURIComponent('item-a1b2c3d4')),
+  "REGRESSION (Bug 1): the baked OBS-poll URL carries the item's RAW id ('item-a1b2c3d4') as itemId, distinctly from the sanitized DOM instanceId"
+);
+assert(
+  !pngtuberObsHtml.includes('itemId=pngtuberitema1b2c3d40') && !pngtuberObsHtml.includes('itemId=' + encodeURIComponent('pngtuber-itema1b2c3d4-0')),
+  'REGRESSION (Bug 1): the sanitized/index-suffixed DOM instanceId is never baked in as the itemId value the relay matches against'
+);
+assert(pngtuberObsHtml.includes('pngtuber-itema1b2c3d4-0'), "the DOM instanceId is still the sanitized+index-suffixed form, used for element ids as always");
+assert(!pngtuberObsHtml.includes('projectFilePath='), "buildSceneHtml never bakes a projectFilePath (Bug 3 fix) - the relay tracks the current project itself via set_current_project_path");
+assert(!pngtuberObsHtml.includes('getUserMedia'), "an 'obs' audio-source pngtuber item's baked script never requests microphone access");
+
 // ---- collectAssetCopies + buildSceneHtml: viewer-pet item ----
 const petProject = baseProject([{
   id: 'v1', type: 'viewer-pet', x: 0, y: 0, width: 200, height: 200, rotation: 0, zIndex: 0,

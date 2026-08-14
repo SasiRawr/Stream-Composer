@@ -10,6 +10,9 @@
 // ============================================================================
 
 use base64::Engine;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
@@ -428,6 +431,402 @@ async fn obs_push_scene(
             .map_err(|e| e.to_string())?;
         Ok("created".to_string())
     }
+}
+
+// ============================================================================
+// OBS LIVE VOLUME METER RELAY (PNGTuber "react to an OBS input" mode) -
+// v1's PNGTuber talking-animation only reacts to the browser's own
+// getUserMedia mic capture, baked as a static threshold at bake time. This
+// lets it react to a live OBS audio input's volume instead (mic, Discord
+// audio, game audio - whatever the user routes into OBS) so the sensitivity
+// slider takes effect live in OBS without re-baking/re-pushing.
+//
+// Two independent pieces, deliberately not sharing a connection:
+//
+// 1. obs_list_inputs - a one-shot connect/list/disconnect, same shape as
+//    obs_list_scenes above, just for populating an "OBS Input" picker.
+//    Filtered to audio-capturing kinds.
+//
+// 2. A persistent relay + its own tiny_http sidecar on port 5760
+//    (5757-5759 already taken - see Kokoro/Chatterbox/Now Playing above),
+//    polled by the BAKED scene.html running in OBS's Browser Source, same
+//    way Now Playing is. Unlike Now Playing (a free local OS read, started
+//    unconditionally at launch), this opens a real network connection to a
+//    possibly-absent OBS instance - so the connection itself is lazy,
+//    started on whichever request happens to hit this sidecar first, via
+//    OBS_VOLUME_RELAY.get_or_init() below (OnceLock, so "first request" is
+//    naturally exactly-once even under concurrent requests). The
+//    tiny_http listener itself still starts eagerly in .setup(), same as
+//    Now Playing - it's free to just be listening.
+//
+// obws 0.15.0's event support (subscribing to InputVolumeMeters - the one
+// non-default/high-volume event category this app has ever needed) is
+// gated behind its own "events" Cargo feature (off by default - see
+// obws's own Cargo.toml) - confirmed by reading obws's actual source
+// (registry cache: obws-0.15.0/src/{client/mod.rs,events.rs,requests/mod.rs}),
+// not guessed:
+//   - `Client::connect_with_config(ConnectConfig { event_subscriptions:
+//     Some(EventSubscription::INPUT_VOLUME_METERS), .. })` opts into the
+//     high-volume InputVolumeMeters category specifically -
+//     `EventSubscription::ALL` (what a plain `Client::connect` effectively
+//     asks for) deliberately EXCLUDES every high-volume event, InputVolumeMeters
+//     included (see the `ALL` vs `INPUT_VOLUME_METERS` bitflag constants in
+//     requests/mod.rs) - so a one-shot `connect()` would never see this event.
+//   - `Client::events() -> Result<EventStream>` (client/mod.rs) hands back a
+//     broadcast-channel-backed stream (events.rs) that implements
+//     `futures_util::Stream` - consumed here with `StreamExt::next()`.
+//   - `Event::InputVolumeMeters { inputs: Vec<InputVolumeMeter> }` where
+//     `InputVolumeMeter` is `{ name: String, levels: Vec<[f32; 3]> }` - one
+//     `[f32; 3]` per audio channel, "in **Mul**" per obws's own doc comment
+//     on the field (i.e. a linear multiplier, NOT dB).
+// ============================================================================
+
+#[derive(serde::Serialize)]
+struct InputSummary {
+    name: String,
+    kind: String,
+}
+
+/// One-shot connect/list/disconnect - NOT tied to the persistent relay
+/// below, same independent-connection-lifecycle pattern as obs_list_scenes.
+/// obws has no generic "is this kind audio-capable" helper - kind ids are
+/// raw OBS plugin identifiers and are platform-specific (Windows:
+/// `wasapi_input_capture` / `wasapi_output_capture` /
+/// `wasapi_process_output_capture`; macOS: `coreaudio_input_capture` /
+/// `coreaudio_output_capture` - the only ones obws itself even names a
+/// constant for, see requests::custom::source_settings; Linux similarly
+/// `pulse_*`/`jack_*` etc.) - there is no flat `audio_input_capture` kind id
+/// on any platform, so matched generically by suffix against
+/// `unversioned_kind` (stable across OBS plugin version bumps) instead of
+/// hardcoding one platform's ids.
+#[tauri::command]
+async fn obs_list_inputs(host: String, port: u16, password: Option<String>) -> Result<Vec<InputSummary>, String> {
+    let client = obws::Client::connect(host, port, password.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let inputs = client.inputs().list(None).await.map_err(|e| e.to_string())?;
+    Ok(inputs
+        .into_iter()
+        .filter(|i| {
+            i.unversioned_kind.ends_with("_input_capture") || i.unversioned_kind.ends_with("_output_capture")
+        })
+        .map(|i| InputSummary { name: i.id.name, kind: i.unversioned_kind })
+        .collect())
+}
+
+/// App-level OBS connection settings (host/port/password) - read from the
+/// SAME obs-settings.json Push to OBS already persists (main.js's
+/// loadObsSettings/saveObsSettings, via resolve_app_data_path) rather than
+/// a second settings surface for this feature.
+#[derive(serde::Deserialize)]
+struct ObsSettingsFile {
+    host: String,
+    port: u16,
+    password: Option<String>,
+}
+
+/// Latest known volume level per OBS input name, plus whether the relay is
+/// currently connected to OBS - shared between the background relay task
+/// and every sidecar request. `levels` holds the raw "Mul" value straight
+/// off the wire (see the module header above) - deliberately not
+/// normalized/converted here, that's the baked script's job.
+#[derive(Default)]
+struct ObsVolumeRelayState {
+    levels: Mutex<HashMap<String, f64>>,
+    connected: AtomicBool,
+}
+
+/// Started at most once per app run, on whichever request happens to be
+/// first - `OnceLock::get_or_init` is itself the exactly-once guarantee, no
+/// separate "already started" flag needed.
+static OBS_VOLUME_RELAY: OnceLock<Arc<ObsVolumeRelayState>> = OnceLock::new();
+
+fn obs_volume_relay_state(app: &tauri::AppHandle) -> Arc<ObsVolumeRelayState> {
+    Arc::clone(OBS_VOLUME_RELAY.get_or_init(|| {
+        let state = Arc::new(ObsVolumeRelayState::default());
+        spawn_obs_volume_relay(app.clone(), Arc::clone(&state));
+        state
+    }))
+}
+
+/// Runs for the rest of the app's lifetime once started. Reconnects with an
+/// exponential backoff (1s, 2s, 4s, 8s, capped at 10s) whenever
+/// obs-settings.json is missing/unreadable, OBS isn't running, or an
+/// already-open connection drops - never hammers a possibly-absent OBS
+/// instance. Backoff resets to 1s after every successful connect.
+fn spawn_obs_volume_relay(app: tauri::AppHandle, state: Arc<ObsVolumeRelayState>) {
+    tauri::async_runtime::spawn(async move {
+        use futures_util::StreamExt;
+
+        let base_backoff = std::time::Duration::from_secs(1);
+        let max_backoff = std::time::Duration::from_secs(10);
+        let mut backoff = base_backoff;
+
+        loop {
+            let settings = resolve_app_data_path(app.clone(), "obs-settings.json".to_string())
+                .ok()
+                .and_then(|path| std::fs::read_to_string(path).ok())
+                .and_then(|text| serde_json::from_str::<ObsSettingsFile>(&text).ok());
+
+            let Some(settings) = settings else {
+                tokio::time::sleep(backoff).await;
+                backoff = (backoff * 2).min(max_backoff);
+                continue;
+            };
+
+            let connect_result = obws::Client::connect_with_config(obws::client::ConnectConfig {
+                host: settings.host.as_str(),
+                port: settings.port,
+                password: settings.password.as_deref(),
+                event_subscriptions: Some(obws::requests::EventSubscription::INPUT_VOLUME_METERS),
+                broadcast_capacity: obws::client::DEFAULT_BROADCAST_CAPACITY,
+                connect_timeout: obws::client::DEFAULT_CONNECT_TIMEOUT,
+                dangerous: None,
+            })
+            .await
+            .and_then(|client| client.events().map(|events| (client, events)));
+
+            // `_client` stays bound (not dropped) for as long as we're reading
+            // events - obws's `Client` disconnects on Drop, which would kill the
+            // event stream out from under the while-let below.
+            let (_client, mut events) = match connect_result {
+                Ok(pair) => pair,
+                Err(e) => {
+                    eprintln!("obs-volume-relay: could not connect/subscribe: {e}");
+                    tokio::time::sleep(backoff).await;
+                    backoff = (backoff * 2).min(max_backoff);
+                    continue;
+                }
+            };
+
+            state.connected.store(true, Ordering::Relaxed);
+            backoff = base_backoff;
+
+            while let Some(event) = events.next().await {
+                if let obws::events::Event::InputVolumeMeters { inputs } = event {
+                    let mut levels = state.levels.lock().unwrap();
+                    for input in inputs {
+                        // Each channel is [magnitude*volume, peak*volume, peak] (per
+                        // obs-websocket's own volume-meter source) - index 1 (post-volume
+                        // peak) is the closest match to "how loud is this input right now
+                        // through this app's set volume", maxed across channels so a
+                        // stereo/multi-channel input doesn't pick one arbitrary channel.
+                        // Still the raw Mul value, unconverted either way.
+                        let level = input
+                            .levels
+                            .iter()
+                            .map(|channel| channel[1] as f64)
+                            .fold(0.0_f64, f64::max);
+                        levels.insert(input.name, level);
+                    }
+                }
+            }
+
+            // The stream ended - the connection dropped (OBS closed, network
+            // blip, etc). Reflect that immediately rather than serving stale
+            // "connected" state, then fall through to reconnect.
+            state.connected.store(false, Ordering::Relaxed);
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(max_backoff);
+        }
+    });
+}
+
+const OBS_VOLUME_METER_SERVER_PORT: u16 = 5760;
+
+/// Tracks the currently-open project's project.json path, mirrored from the
+/// JS side (main.js's `projectFolder`) via set_current_project_path below.
+/// Deliberately NOT trusted from the HTTP request's own query string -
+/// obs_volume_meter_server_thread has no auth and `Access-Control-Allow-
+/// Origin: *`, so ANY local page open in the user's browser while this app
+/// is running could otherwise ask it to open and parse an arbitrary path on
+/// disk. Storing "which project is open" as app state the frontend keeps in
+/// sync, instead, closes that off entirely - the relay only ever reads
+/// whatever project THIS app actually has open.
+static CURRENT_PROJECT_PATH: Mutex<Option<String>> = Mutex::new(None);
+
+/// Called by main.js every time it sets its own `projectFolder` (creating,
+/// opening, or importing into a project) so this app's state always mirrors
+/// the frontend's idea of "which project is open" - see CURRENT_PROJECT_PATH
+/// above for why the relay needs this instead of a client-supplied path.
+/// `path: None` clears it back to "no project open" (there's currently no
+/// UI path that does this - projectFolder only ever goes from unset to set -
+/// but the command supports it for whenever that changes).
+#[tauri::command]
+fn set_current_project_path(path: Option<String>) {
+    *CURRENT_PROJECT_PATH.lock().unwrap() = path;
+}
+
+#[derive(serde::Serialize)]
+struct ObsVolumeMeterResponse {
+    level: f64,
+    #[serde(rename = "inputFound")]
+    input_found: bool,
+    #[serde(rename = "obsConnected")]
+    obs_connected: bool,
+    // Live sensitivity settings, re-read from the current project file on
+    // every poll alongside obsInputName (see find_obs_item_settings below) -
+    // populated whenever the live lookup succeeds so the baked script can
+    // pick up a changed sensitivity slider without a re-bake. Falls back to
+    // the bake-time query-param values (already threaded through by the
+    // caller) when the live lookup fails for any reason, same discipline as
+    // obsInputName always had.
+    #[serde(rename = "micThreshold")]
+    mic_threshold: f64,
+    #[serde(rename = "holdMs")]
+    hold_ms: u64,
+}
+
+/// Minimal `?key=value&key2=value2` parser, reusing percent_decode below
+/// for both keys and values - generalized from now_playing_server_thread's
+/// single-param `app=` parsing above, since this route needs several.
+fn parse_query_params(url: &str) -> HashMap<String, String> {
+    let mut params = HashMap::new();
+    if let Some((_, query)) = url.split_once('?') {
+        for pair in query.split('&') {
+            if pair.is_empty() {
+                continue;
+            }
+            match pair.split_once('=') {
+                Some((k, v)) => {
+                    params.insert(percent_decode(k), percent_decode(v));
+                }
+                None => {
+                    params.insert(percent_decode(pair), String::new());
+                }
+            }
+        }
+    }
+    params
+}
+
+/// A pngtuber item's live-relevant OBS settings, as found in the project
+/// file right now. Any field that couldn't be read (missing/absent prop,
+/// wrong type) is `None` - the caller falls back to that ONE field's
+/// bake-time query-param value rather than discarding the whole lookup,
+/// matching find_obs_item_settings's existing "degrade, don't break" rule.
+struct ObsItemSettings {
+    obs_input_name: Option<String>,
+    mic_threshold: Option<f64>,
+    hold_ms: Option<u64>,
+}
+
+/// Reads the project file fresh on every request (cheap - these are small
+/// JSON files) and looks up the given item's live `obsInputName`,
+/// `micThreshold`, and `holdMs` props - the three settings a streamer can
+/// change from the properties panel without wanting to re-bake. Project
+/// schema confirmed from main.js (newProjectData/addItem/saveProject): a
+/// project is `{ canvasWidth, canvasHeight, items: [...] }`, each item is
+/// `{ id, type, x, y, width, height, rotation, zIndex, props: {...} }` with
+/// per-type properties living under `props`, not flattened onto the item
+/// itself. Parsed as a loose `serde_json::Value` rather than a strict
+/// struct - deliberately tolerant of every other item type/prop shape in
+/// the same file, which this code has no need to understand.
+///
+/// Matched against `item_id` - the item's RAW `id` field (main.js's
+/// `uid()`, e.g. "item-a1b2c3d4") - NOT the sanitized/index-suffixed DOM
+/// `instanceId` bake.js also generates (e.g. "pngtuber-itema1b2c3d4-0").
+/// Those two strings can never be equal (one strips characters and appends
+/// an index, the other doesn't), so matching against instanceId here would
+/// make this lookup always fail silently - see bake.js/pngtuber-engine.js
+/// for the itemId param this is paired with.
+///
+/// Returns `None` (letting the caller fall back entirely to the baked
+/// query params) if the project file itself can't be read/parsed/matched.
+/// A missing/stale project file on disk should never break the live meter,
+/// only degrade it.
+fn find_obs_item_settings(project_file_path: &str, item_id: &str) -> Option<ObsItemSettings> {
+    let text = std::fs::read_to_string(project_file_path).ok()?;
+    let project: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let item = project
+        .get("items")?
+        .as_array()?
+        .iter()
+        .find(|item| item.get("id").and_then(|v| v.as_str()) == Some(item_id))?;
+    let props = item.get("props")?;
+
+    let obs_input_name = props
+        .get("obsInputName")
+        .and_then(|v| v.as_str())
+        .filter(|name| !name.is_empty())
+        .map(|name| name.to_string());
+    let mic_threshold = props.get("micThreshold").and_then(|v| v.as_f64());
+    let hold_ms = props.get("holdMs").and_then(|v| v.as_u64());
+
+    Some(ObsItemSettings { obs_input_name, mic_threshold, hold_ms })
+}
+
+/// Sidecar for the baked PNGTuber engine to poll a live OBS input's volume
+/// - see the module header above for why this exists and why the actual
+/// OBS connection (spawn_obs_volume_relay) is lazy while this HTTP
+/// listener itself starts eagerly in .setup(), same as Now Playing.
+fn obs_volume_meter_server_thread(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        let server = match tiny_http::Server::http(("127.0.0.1", OBS_VOLUME_METER_SERVER_PORT)) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("obs-volume-meter server: could not bind 127.0.0.1:{OBS_VOLUME_METER_SERVER_PORT}: {e}");
+                return;
+            }
+        };
+        for request in server.incoming_requests() {
+            let params = parse_query_params(request.url());
+            let state = obs_volume_relay_state(&app);
+
+            // The project file path is NEVER trusted from the client - see
+            // CURRENT_PROJECT_PATH's doc comment. `itemId` (the item's raw,
+            // unsanitized id) is the only thing the client supplies to
+            // locate the item within that project.
+            let live_settings = match (
+                CURRENT_PROJECT_PATH.lock().unwrap().clone(),
+                params.get("itemId"),
+            ) {
+                (Some(path), Some(id)) => find_obs_item_settings(&path, id),
+                _ => None,
+            };
+
+            let input_name = live_settings
+                .as_ref()
+                .and_then(|s| s.obs_input_name.clone())
+                .or_else(|| params.get("obsInputName").cloned());
+
+            let mic_threshold = live_settings
+                .as_ref()
+                .and_then(|s| s.mic_threshold)
+                .or_else(|| params.get("micThreshold").and_then(|v| v.parse::<f64>().ok()))
+                .unwrap_or(15.0);
+
+            let hold_ms = live_settings
+                .as_ref()
+                .and_then(|s| s.hold_ms)
+                .or_else(|| params.get("holdMs").and_then(|v| v.parse::<u64>().ok()))
+                .unwrap_or(200);
+
+            let (level, input_found) = match &input_name {
+                Some(name) => {
+                    let levels = state.levels.lock().unwrap();
+                    match levels.get(name) {
+                        Some(v) => (*v, true),
+                        None => (0.0, false),
+                    }
+                }
+                None => (0.0, false),
+            };
+
+            let body_struct = ObsVolumeMeterResponse {
+                level,
+                mic_threshold,
+                hold_ms,
+                input_found,
+                obs_connected: state.connected.load(Ordering::Relaxed),
+            };
+            let body = serde_json::to_string(&body_struct).unwrap_or_else(|_| "null".to_string());
+            let response = tiny_http::Response::from_string(body)
+                .with_header(tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
+                .with_header(tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap());
+            let _ = request.respond(response);
+        }
+    });
 }
 
 /// Opens a URL with whatever the operating system's default browser is.
@@ -863,8 +1262,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
-        .setup(|_app| {
+        .setup(|app| {
             now_playing_server_thread();
+            obs_volume_meter_server_thread(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -876,10 +1276,12 @@ pub fn run() {
             write_binary_file,
             file_exists,
             resolve_app_data_path,
+            set_current_project_path,
             now_playing_info,
             now_playing_sessions,
             obs_list_scenes,
             obs_push_scene,
+            obs_list_inputs,
             preview_overlay,
             copy_to_clipboard,
             kokoro_model_status,

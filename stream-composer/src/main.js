@@ -179,6 +179,8 @@ function defaultPropsFor(type) {
       flapIntervalMs: 120,      // mouthFlap only — how fast the mouth alternates open/closed while talking
       micThreshold: 15, // percent sensitivity, 0-100 — see pngtuber-engine.js for how this maps to a 0-1 RMS threshold
       holdMs: 200,       // how long the talking state stays up through brief pauses before falling back to idle
+      audioSource: 'mic', // 'mic' (getUserMedia, default) | 'obs' — react to a live OBS input's volume via the local relay instead
+      obsInputName: '',   // 'obs' mode only — the OBS input's name, as returned by obs_list_inputs
     };
   }
   if (type === 'viewer-pet') {
@@ -235,6 +237,7 @@ async function createProject(canvasWidth, canvasHeight) {
   if (!folder) return;
   project = newProjectData(canvasWidth, canvasHeight);
   projectFolder = folder;
+  syncCurrentProjectPath();
   await openWorkspace();
   await saveProject();
   setStatus('New project created in ' + folder, 'ok');
@@ -252,6 +255,7 @@ async function createProjectFromTemplates(templates, personalization) {
   project = mergeStarterProjects(templates.map((t) => t.buildProject()));
   if (personalization) project = personalizeProject(project, personalization);
   projectFolder = folder;
+  syncCurrentProjectPath();
   await openWorkspace();
   await saveProject();
   const names = templates.map((t) => t.label).join(' + ');
@@ -277,6 +281,7 @@ async function openProject() {
   const text = await invoke('read_text_file', { path: projectPath });
   project = JSON.parse(text);
   projectFolder = folder;
+  syncCurrentProjectPath();
   await openWorkspace();
   setStatus('Opened project from ' + folder, 'ok');
 }
@@ -361,6 +366,7 @@ async function createProjectFromImport(canvasWidth, canvasHeight, popupSlideProp
   if (!folder) return;
   project = newProjectData(canvasWidth, canvasHeight);
   projectFolder = folder;
+  syncCurrentProjectPath();
   await openWorkspace();
   await addItem('popup-slide', popupSlideProps);
   await saveProject();
@@ -370,6 +376,18 @@ async function createProjectFromImport(canvasWidth, canvasHeight, popupSlideProp
 function joinPath(folder, filename) {
   const sep = folder.includes('\\') ? '\\' : '/';
   return folder.replace(/[\\/]+$/, '') + sep + filename;
+}
+
+// Mirrors `projectFolder` into Rust app state (src-tauri's
+// CURRENT_PROJECT_PATH) every time it changes, so the OBS volume-meter
+// relay always knows which project is currently open without trusting a
+// client-supplied path over HTTP - see set_current_project_path's doc
+// comment in lib.rs for why that trust boundary matters. Fire-and-forget:
+// worst case (a dropped invoke) just means the live pngtuber lookup falls
+// back to its bake-time query params a little longer, same as any other
+// live-lookup failure already degrades.
+function syncCurrentProjectPath() {
+  invoke('set_current_project_path', { path: projectFolder ? joinPath(projectFolder, 'project.json') : null });
 }
 
 // ---- CANVAS SETUP ---------------------------------------------------------
@@ -2364,19 +2382,25 @@ function renderPngtuberProperties(item, body) {
     `;
   }
 
-  body.innerHTML = `
+  const isObsSource = p.audioSource === 'obs';
+
+  // 'mic' mode reuses the existing live editor-side meter/Test-mic/Auto-
+  // calibrate UI (needs nothing but this app's own getUserMedia access).
+  // 'obs' mode swaps that out for a dropdown of OBS inputs instead — that
+  // meter/calibrate UI is meaningless once the signal comes from OBS, not
+  // this app's own mic capture (see loadObsInputsIntoSelect() below).
+  const audioSourceHtml = isObsSource ? `
     <div class="field">
-      <label>Animation style</label>
-      <select id="pf-pngtuberStyle">
-        ${Object.entries(PNGTUBER_STYLE_LABELS).map(([key, label]) => `<option value="${key}" ${style === key ? 'selected' : ''}>${label}</option>`).join('')}
+      <label>OBS audio input</label>
+      <select id="pf-obsInputSelect">
+        <option value="">${p.obsInputName ? escapeHtml(p.obsInputName) : 'Choose an input…'}</option>
       </select>
+      <div class="button-row">
+        <button class="secondary" id="pf-obsRefreshInputsBtn" type="button">Refresh inputs</button>
+      </div>
+      <div class="hint" id="pf-obsInputStatus">Connecting to OBS…</div>
     </div>
-    ${stylePropsHtml}
-    <div class="field">
-      <label>Mic sensitivity (<span id="pf-micThresholdValue">${p.micThreshold}</span>%)</label>
-      <input type="range" id="pf-micThreshold" min="1" max="80" step="1" value="${p.micThreshold}">
-      <div class="hint">Lower = reacts more easily (picks up quieter sounds). Raise this if it's triggering on background noise or your mic's natural hiss.</div>
-    </div>
+  ` : `
     <div class="field">
       <label>Mic level</label>
       <div class="mic-meter">
@@ -2389,16 +2413,43 @@ function renderPngtuberProperties(item, body) {
       </div>
       <div class="hint" id="pf-micStatus">Click "Test mic" to see your live mic level here in the editor — the orange line marks the current threshold.</div>
     </div>
+  `;
+
+  body.innerHTML = `
+    <div class="field">
+      <label>Animation style</label>
+      <select id="pf-pngtuberStyle">
+        ${Object.entries(PNGTUBER_STYLE_LABELS).map(([key, label]) => `<option value="${key}" ${style === key ? 'selected' : ''}>${label}</option>`).join('')}
+      </select>
+    </div>
+    ${stylePropsHtml}
+    <div class="field">
+      <label><input type="checkbox" id="pf-audioSourceObs" ${isObsSource ? 'checked' : ''}> React to an OBS audio source instead of microphone</label>
+      <div class="hint">Reacts to a live OBS input's volume (mic, Discord audio, game audio — your choice) instead of this app's own microphone capture, and reads the sensitivity slider below live from the project file so changes take effect without re-baking. Needs Stream Composer Suite running alongside OBS.</div>
+    </div>
+    <div class="field">
+      <label>Mic sensitivity (<span id="pf-micThresholdValue">${p.micThreshold}</span>%)</label>
+      <input type="range" id="pf-micThreshold" min="1" max="80" step="1" value="${p.micThreshold}">
+      <div class="hint">Lower = reacts more easily (picks up quieter sounds). Raise this if it's triggering on background noise or ${isObsSource ? 'the chosen input\'s' : 'your mic\'s'} natural hiss.</div>
+    </div>
+    ${audioSourceHtml}
     <div class="field">
       <label>Hold time after you stop talking (ms)</label>
       <input type="number" id="pf-holdMs" min="0" max="2000" step="50" value="${p.holdMs}">
       <div class="hint">Keeps the talking reaction up briefly through short pauses (like mid-sentence breaths) instead of flickering back to idle on every gap.</div>
     </div>
-    <div class="hint">The mic reaction itself only runs in the baked output (in OBS) — the meter above is just an editor-side preview to help you tune the sensitivity. The first time the baked scene loads in OBS, you'll need to grant it microphone access separately: right-click the Browser Source → Interact → allow the microphone prompt, then refresh.</div>
+    <div class="hint">${isObsSource
+      ? 'This reaction only runs in the baked output (in OBS) — it needs Stream Composer Suite running alongside OBS to keep reading the live volume and threshold.'
+      : 'The mic reaction itself only runs in the baked output (in OBS) — the meter above is just an editor-side preview to help you tune the sensitivity. The first time the baked scene loads in OBS, you\'ll need to grant it microphone access separately: right-click the Browser Source → Interact → allow the microphone prompt, then refresh.'}</div>
   `;
 
   document.getElementById('pf-pngtuberStyle').addEventListener('change', (e) => {
     p.style = e.target.value;
+    renderPropertiesPanel();
+  });
+
+  document.getElementById('pf-audioSourceObs').addEventListener('change', (e) => {
+    p.audioSource = e.target.checked ? 'obs' : 'mic';
     renderPropertiesPanel();
   });
 
@@ -2431,82 +2482,147 @@ function renderPngtuberProperties(item, body) {
     fillEl.classList.toggle('is-above-threshold', rms * 100 > p.micThreshold);
   };
 
-  document.getElementById('pf-testMicBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('pf-testMicBtn');
-    if (micPreview) {
-      stopMicPreview();
-      btn.textContent = 'Test mic';
-      if (micStatusEl()) micStatusEl().textContent = 'Click "Test mic" to see your live mic level here in the editor — the orange line marks the current threshold.';
-      const fillEl = document.getElementById('pf-micMeterFill');
-      if (fillEl) fillEl.style.width = '0%';
-      return;
-    }
-    btn.disabled = true;
-    if (micStatusEl()) micStatusEl().textContent = 'Requesting microphone access…';
-    const ok = await startMicPreview(updateMeter);
-    if (!micStatusEl()) return; // panel switched away while awaiting permission
-    btn.disabled = false;
-    if (!ok) {
-      micStatusEl().textContent = 'Mic access denied or unavailable — allow microphone access for this app, then try again.';
-      return;
-    }
-    btn.textContent = 'Stop test';
-    micStatusEl().textContent = 'Listening… talk normally to see your level move.';
-  });
-
-  document.getElementById('pf-autoCalibrateBtn').addEventListener('click', async () => {
-    const testBtn = document.getElementById('pf-testMicBtn');
-    const calBtn = document.getElementById('pf-autoCalibrateBtn');
-    calBtn.disabled = true;
-    testBtn.disabled = true;
-
-    if (!micPreview) {
+  // Test mic / Auto-calibrate only exist in the DOM in 'mic' mode — the
+  // audioSourceHtml block above renders the OBS input dropdown instead
+  // when audioSource === 'obs', so none of this wiring applies there.
+  if (!isObsSource) {
+    document.getElementById('pf-testMicBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('pf-testMicBtn');
+      if (micPreview) {
+        stopMicPreview();
+        btn.textContent = 'Test mic';
+        if (micStatusEl()) micStatusEl().textContent = 'Click "Test mic" to see your live mic level here in the editor — the orange line marks the current threshold.';
+        const fillEl = document.getElementById('pf-micMeterFill');
+        if (fillEl) fillEl.style.width = '0%';
+        return;
+      }
+      btn.disabled = true;
       if (micStatusEl()) micStatusEl().textContent = 'Requesting microphone access…';
       const ok = await startMicPreview(updateMeter);
       if (!micStatusEl()) return; // panel switched away while awaiting permission
+      btn.disabled = false;
       if (!ok) {
         micStatusEl().textContent = 'Mic access denied or unavailable — allow microphone access for this app, then try again.';
-        calBtn.disabled = false;
-        testBtn.disabled = false;
         return;
       }
-      testBtn.textContent = 'Stop test';
+      btn.textContent = 'Stop test';
+      micStatusEl().textContent = 'Listening… talk normally to see your level move.';
+    });
+
+    document.getElementById('pf-autoCalibrateBtn').addEventListener('click', async () => {
+      const testBtn = document.getElementById('pf-testMicBtn');
+      const calBtn = document.getElementById('pf-autoCalibrateBtn');
+      calBtn.disabled = true;
+      testBtn.disabled = true;
+
+      if (!micPreview) {
+        if (micStatusEl()) micStatusEl().textContent = 'Requesting microphone access…';
+        const ok = await startMicPreview(updateMeter);
+        if (!micStatusEl()) return; // panel switched away while awaiting permission
+        if (!ok) {
+          micStatusEl().textContent = 'Mic access denied or unavailable — allow microphone access for this app, then try again.';
+          calBtn.disabled = false;
+          testBtn.disabled = false;
+          return;
+        }
+        testBtn.textContent = 'Stop test';
+      }
+
+      const silenceSamples = await collectRmsSamples(3000, (secLeft) => {
+        if (micStatusEl()) micStatusEl().textContent = `Stay quiet — measuring silence… ${secLeft}`;
+      });
+      if (!micStatusEl()) return; // panel switched away mid-calibration
+
+      micStatusEl().textContent = 'Now say something normally…';
+      const speakingSamples = await collectRmsSamples(3000, (secLeft) => {
+        if (micStatusEl()) micStatusEl().textContent = `Now say something normally… ${secLeft}`;
+      });
+      if (!micStatusEl()) return; // panel switched away mid-calibration
+
+      const silenceRms = average(silenceSamples);
+      const speakingRms = average(speakingSamples);
+      const calibrated = computeCalibratedThreshold(silenceRms, speakingRms);
+
+      if (calibrated === null) {
+        micStatusEl().textContent = 'Speaking level was too close to the silence floor to calibrate — make sure you actually talk during the second phase, then try Auto-calibrate again.';
+      } else {
+        p.micThreshold = calibrated;
+        document.getElementById('pf-micThreshold').value = calibrated;
+        document.getElementById('pf-micThresholdValue').textContent = calibrated;
+        document.getElementById('pf-micMeterMarker').style.left = rmsToMeterPercent(calibrated / 100) + '%';
+        micStatusEl().textContent = `Calibrated — mic sensitivity set to ${calibrated}%.`;
+      }
+
+      calBtn.disabled = false;
+      testBtn.disabled = false;
+    });
+  } else {
+    // 'obs' mode: populate the OBS input dropdown via the same persisted
+    // connection settings the Push-to-OBS dialog uses (loadObsSettings()).
+    // obs_list_inputs returns { name, kind }[] (kind is only used server-side
+    // to filter to audio-capable inputs) - use input.name everywhere below.
+    const obsSelect = document.getElementById('pf-obsInputSelect');
+    const obsStatusEl = document.getElementById('pf-obsInputStatus');
+
+    async function loadObsInputs() {
+      obsStatusEl.textContent = 'Connecting to OBS…';
+      const saved = await loadObsSettings();
+      const usedHost = saved?.host || '127.0.0.1';
+      const usedPort = saved?.port || 4455;
+      const usedPassword = saved?.password || null;
+      try {
+        const inputs = await invoke('obs_list_inputs', {
+          host: usedHost,
+          port: usedPort,
+          password: usedPassword,
+        });
+        if (!document.getElementById('pf-obsInputSelect')) return; // panel switched away while awaiting connection
+        const options = ['<option value="">Choose an input…</option>']
+          .concat(inputs.map((input) => `<option value="${escapeHtml(input.name)}">${escapeHtml(input.name)}</option>`));
+        obsSelect.innerHTML = options.join('');
+        let toSelect = p.obsInputName && inputs.some((input) => input.name === p.obsInputName) ? p.obsInputName : '';
+        if (!toSelect) {
+          // No prior selection (or it's gone) — auto-pick the one obviously-
+          // mic-like input if there's exactly one, otherwise leave it for
+          // the streamer to choose (ambiguous: could be Discord, game audio, etc).
+          const micMatches = inputs.filter((input) => /mic/i.test(input.name));
+          if (micMatches.length === 1) toSelect = micMatches[0].name;
+        }
+        obsSelect.value = toSelect;
+        if (toSelect !== p.obsInputName) p.obsInputName = toSelect;
+        obsStatusEl.textContent = `Connected — found ${inputs.length} input${inputs.length === 1 ? '' : 's'}.`;
+        // A successful connect here proves usedHost/usedPort/usedPassword are
+        // correct for the user's actual OBS instance right now. The
+        // PERSISTENT relay (src-tauri's spawn_obs_volume_relay) only ever
+        // reads obs-settings.json though - it never sees whatever this
+        // panel just connected with unless that's also what's on disk.
+        // Without this, a user who's never opened the Push-to-OBS dialog
+        // (so obs-settings.json doesn't exist, or is stale) gets a working
+        // input dropdown here while the relay retries forever with nothing
+        // to go on - obsConnected stuck false with no obvious cause. Keep
+        // it opportunistic: only write when something would actually
+        // change, same "don't touch disk unless needed" discipline
+        // saveProject() already follows elsewhere.
+        if (!saved || saved.host !== usedHost || saved.port !== usedPort || (saved.password || null) !== usedPassword) {
+          await saveObsSettings({ host: usedHost, port: usedPort, password: usedPassword });
+        }
+      } catch (err) {
+        if (!document.getElementById('pf-obsInputStatus')) return; // panel switched away while awaiting connection
+        obsStatusEl.textContent = 'Could not connect to OBS: ' + err + ' — check that OBS is running with the WebSocket server enabled (Tools → WebSocket Server Settings).';
+      }
     }
 
-    const silenceSamples = await collectRmsSamples(3000, (secLeft) => {
-      if (micStatusEl()) micStatusEl().textContent = `Stay quiet — measuring silence… ${secLeft}`;
-    });
-    if (!micStatusEl()) return; // panel switched away mid-calibration
-
-    micStatusEl().textContent = 'Now say something normally…';
-    const speakingSamples = await collectRmsSamples(3000, (secLeft) => {
-      if (micStatusEl()) micStatusEl().textContent = `Now say something normally… ${secLeft}`;
-    });
-    if (!micStatusEl()) return; // panel switched away mid-calibration
-
-    const silenceRms = average(silenceSamples);
-    const speakingRms = average(speakingSamples);
-    const calibrated = computeCalibratedThreshold(silenceRms, speakingRms);
-
-    if (calibrated === null) {
-      micStatusEl().textContent = 'Speaking level was too close to the silence floor to calibrate — make sure you actually talk during the second phase, then try Auto-calibrate again.';
-    } else {
-      p.micThreshold = calibrated;
-      document.getElementById('pf-micThreshold').value = calibrated;
-      document.getElementById('pf-micThresholdValue').textContent = calibrated;
-      document.getElementById('pf-micMeterMarker').style.left = rmsToMeterPercent(calibrated / 100) + '%';
-      micStatusEl().textContent = `Calibrated — mic sensitivity set to ${calibrated}%.`;
-    }
-
-    calBtn.disabled = false;
-    testBtn.disabled = false;
-  });
+    obsSelect.addEventListener('change', (e) => { p.obsInputName = e.target.value; });
+    document.getElementById('pf-obsRefreshInputsBtn').addEventListener('click', loadObsInputs);
+    loadObsInputs();
+  }
 
   const applyGeneral = () => {
     p.micThreshold = parseInt(document.getElementById('pf-micThreshold').value, 10) || 15;
     p.holdMs = parseInt(document.getElementById('pf-holdMs').value, 10) || 0;
     document.getElementById('pf-micThresholdValue').textContent = document.getElementById('pf-micThreshold').value;
-    document.getElementById('pf-micMeterMarker').style.left = rmsToMeterPercent(p.micThreshold / 100) + '%';
+    const meterMarkerEl = document.getElementById('pf-micMeterMarker'); // only present in 'mic' mode
+    if (meterMarkerEl) meterMarkerEl.style.left = rmsToMeterPercent(p.micThreshold / 100) + '%';
     if (style === 'mouthFlap') {
       p.mouthWidthPercent = parseInt(document.getElementById('pf-mouthWidthPercent').value, 10) || 30;
       p.mouthLeftPercent = parseInt(document.getElementById('pf-mouthLeftPercent').value, 10) || 50;

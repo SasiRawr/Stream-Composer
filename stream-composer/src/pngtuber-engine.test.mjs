@@ -7,7 +7,7 @@
 // Run with: node src/pngtuber-engine.test.mjs
 // ============================================================================
 
-import { buildPngtuberScript, computeCalibratedThreshold } from './pngtuber-engine.js';
+import { buildPngtuberScript, computeCalibratedThreshold, evaluateTalking, clampObsLevel01 } from './pngtuber-engine.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -101,6 +101,128 @@ assert(lowEnd === null, 'a tiny overall gap right at the noise floor still retur
 
 const highEnd = computeCalibratedThreshold(0.5, 1.5);
 assert(highEnd === 80, 'a calibrated result above the slider max (80%) clamps to 80, matching the properties panel slider range');
+
+// ---- evaluateTalking: the shared trigger state machine, extracted from ----
+// frame() so both the mic mode and the OBS-source mode call the exact same
+// function (see pngtuber-engine.js's header comment on buildPngtuberScript).
+assert(
+  evaluateTalking(0.5, 0.15, 200, 1000, 0, false).talking === true,
+  'a level above threshold becomes talking'
+);
+assert(
+  evaluateTalking(0.5, 0.15, 200, 1000, 0, false).lastLoudAt === 1000,
+  'a level above threshold refreshes lastLoudAt to "now"'
+);
+assert(
+  evaluateTalking(0.05, 0.15, 200, 1000, 900, true).talking === true,
+  'a quiet level still within the hold window stays talking'
+);
+assert(
+  evaluateTalking(0.05, 0.15, 200, 1000, 900, true).lastLoudAt === 900,
+  'a quiet level within the hold window does not touch lastLoudAt'
+);
+assert(
+  evaluateTalking(0.05, 0.15, 200, 1500, 900, true).talking === false,
+  'a quiet level past the hold window falls back to idle'
+);
+assert(
+  evaluateTalking(0.05, 0.15, 200, 100, 0, false).talking === false,
+  'a quiet level while already idle stays idle (no false-positive at boot, e.g. now=100ms < holdMs)'
+);
+assert(
+  evaluateTalking(0.15, 0.15, 200, 1000, 0, false).talking === false,
+  'a level exactly AT threshold (not above) does not trigger talking'
+);
+
+// ---- clampObsLevel01: OBS's InputVolumeMeters level is already linear ----
+// (obws's "Mul" value, not dBFS) - this only needs to clamp, never convert.
+assert(clampObsLevel01(0) === 0, 'silence (linear level 0) stays 0');
+assert(clampObsLevel01(0.3) === 0.3, 'a normal in-range linear level passes through unchanged');
+assert(clampObsLevel01(1.4) === 1, 'a clipping linear level (>1) clamps to 1, never exceeds the range evaluateTalking() expects');
+assert(clampObsLevel01(-0.2) === 0, 'a negative level (should not happen, but defensively) clamps to 0');
+
+// ---- OBS-source mode: buildPngtuberScript branches on props.audioSource ----
+// itemId ('item-a1b2c3d4') is deliberately a REALISTIC raw main.js uid() —
+// distinct in shape from the sanitized/index-suffixed DOM instanceId
+// ('pngtuber-obs1-0') passed as this function's first argument, so this
+// test would have caught the original bug (bake.js baking the sanitized
+// DOM instanceId as the value the Rust relay matched project.json's raw
+// item.id against, which could never match anything, ever - see Bug 1 in
+// the regression-test section below for the full round-trip version of
+// this check).
+const obsScript = buildPngtuberScript('pngtuber-obs1-0', { idle: 'a.png' }, {
+  style: 'bounce', micThreshold: 20, holdMs: 300, audioSource: 'obs', obsInputName: 'Mic/Aux',
+}, 'item-a1b2c3d4');
+
+assert(!obsScript.includes('getUserMedia'), "'obs' mode: does NOT request microphone access — that's the whole point of this mode");
+assert(!obsScript.includes('createAnalyser'), "'obs' mode: does NOT use the Web Audio API at all");
+assert(obsScript.includes('fetch(OBS_POLL_URL'), "'obs' mode: polls the local relay via fetch()");
+assert(obsScript.includes('http://127.0.0.1:5760/?'), "'obs' mode: polling URL points at the documented relay port");
+assert(!obsScript.includes('projectFilePath='), "'obs' mode: never sends a projectFilePath - the relay tracks the current project itself (set_current_project_path), never trusting a client-supplied path (Bug 3 fix)");
+assert(obsScript.includes('itemId=' + encodeURIComponent('item-a1b2c3d4')), "'obs' mode: the item's RAW id (not the sanitized DOM instanceId) is URL-encoded into the polling URL as itemId, distinctly from instanceId");
+assert(!obsScript.includes('instanceId=item-a1b2c3d4'), "'obs' mode: the raw itemId is never confused with/baked as instanceId");
+assert(obsScript.includes('micThreshold=20'), "'obs' mode: micThreshold (bake-time fallback) is passed as a query param");
+assert(obsScript.includes('holdMs=300'), "'obs' mode: holdMs (bake-time fallback) is passed as a query param");
+assert(obsScript.includes('obsInputName=' + encodeURIComponent('Mic/Aux')), "'obs' mode: obsInputName (bake-time fallback) is URL-encoded into the polling URL");
+assert(obsScript.includes('function clampObsLevel01'), "'obs' mode: inlines the shared clamp function, so mic and OBS modes can never drift in how they cap the 0-1 range");
+assert(obsScript.includes('applyLevel(0, performance.now(), THRESHOLD, HOLD_MS)'), "'obs' mode: an unreachable relay feeds silence (0) through the SAME evaluateTalking() call (falling back to the baked THRESHOLD/HOLD_MS), not a special-cased path");
+assert(obsScript.includes('setInterval(pollObsInput, OBS_POLL_INTERVAL_MS)'), "'obs' mode: polls on a fixed interval, not requestAnimationFrame");
+assert(obsScript.includes('data?.micThreshold') || obsScript.includes('data.micThreshold'), "'obs' mode: reads a LIVE micThreshold from each poll response, not just the baked constant (Bug 2 fix)");
+assert(obsScript.includes('data?.holdMs') || obsScript.includes('data.holdMs'), "'obs' mode: reads a LIVE holdMs from each poll response, not just the baked constant (Bug 2 fix)");
+checkSyntax(obsScript, 'obs-source');
+
+// itemId omitted entirely (unsaved project, or an item.id somehow not
+// passed through) - degrades gracefully, bakes an empty itemId rather than
+// erroring; the relay's live lookup then simply can't match anything and
+// falls back to the query-param values, same as any other lookup failure.
+const obsScriptNoPath = buildPngtuberScript('pngtuber-obs2-1', {}, { style: 'swap', audioSource: 'obs', obsInputName: 'Mic' });
+assert(obsScriptNoPath.includes('http://127.0.0.1:5760/?itemId='), 'obs mode with no itemId given still bakes a valid polling URL starting from itemId');
+checkSyntax(obsScriptNoPath, 'obs-source, no itemId');
+
+// ---- default ('mic') mode is unaffected by the audioSource branch ----
+// Same markers the original pre-refactor script had - still true after
+// extracting evaluateTalking() and adding the 'obs' branch alongside it.
+const micModeScript = buildPngtuberScript('pngtuber-mic1-0', { idle: 'a.png', talking: 'b.png' }, { style: 'swap', micThreshold: 15, holdMs: 200 });
+assert(micModeScript.includes('getUserMedia'), "unset audioSource (default): still requests microphone access");
+assert(micModeScript.includes('createAnalyser'), "unset audioSource (default): still uses the Web Audio API AnalyserNode");
+assert(micModeScript.includes('requestAnimationFrame'), "unset audioSource (default): still driven by requestAnimationFrame, not the OBS poll interval");
+assert(!micModeScript.includes('OBS_POLL_URL'), "unset audioSource (default): never emits the OBS polling machinery at all");
+assert(!micModeScript.includes('fetch('), "unset audioSource (default): makes no network requests, same 'zero desktop-app dependency' guarantee as before");
+const micModeScriptExplicit = buildPngtuberScript('pngtuber-mic1-0', { idle: 'a.png', talking: 'b.png' }, { style: 'swap', micThreshold: 15, holdMs: 200, audioSource: 'mic' });
+assert(micModeScript === micModeScriptExplicit, 'an unset audioSource and an explicit audioSource: "mic" produce byte-for-byte identical output');
+checkSyntax(micModeScript, 'mic mode (default)');
+
+// ---- REGRESSION (Bug 1): the baked itemId must be the RAW item.id, never ----
+// the sanitized/index-suffixed DOM instanceId — this is the exact class of
+// bug that slipped through before: every prior test asserted on the URL's
+// string contents alone, never round-tripped a REALISTIC raw project item
+// id through the same sanitization formula bake.js actually applies before
+// checking what ends up in the URL. bake.js computes the DOM instanceId as
+// `pngtuber-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}` — reproduced
+// verbatim here (it's a private, unexported detail of bake.js) so this test
+// independently proves the two ids this function is given can never be
+// mistaken for each other, and that the RAW id — the one
+// src-tauri/src/lib.rs's find_obs_item_settings matches project.json's own
+// `id` field against — is what actually reaches the polling URL as itemId.
+const rawItemId = 'item-a1b2c3d4'; // main.js's uid(): 'item-' + 8 random base36 chars
+const sanitizedInstanceId = `pngtuber-${rawItemId.replace(/[^a-zA-Z0-9]/g, '')}-0`; // bake.js's exact formula
+assert(
+  sanitizedInstanceId !== rawItemId,
+  'sanity check: for a realistic id, the sanitized DOM instanceId and the raw item.id are never equal — this mismatch is exactly why Bug 1 happened'
+);
+
+const regressionScript = buildPngtuberScript(sanitizedInstanceId, { idle: 'a.png' }, {
+  style: 'swap', audioSource: 'obs', obsInputName: 'Mic', micThreshold: 15, holdMs: 200,
+}, rawItemId);
+assert(
+  regressionScript.includes('itemId=' + encodeURIComponent(rawItemId)),
+  'REGRESSION (Bug 1): the polling URL carries the RAW item.id as itemId — the value the Rust relay can actually match against project.json'
+);
+assert(
+  !regressionScript.includes('itemId=' + encodeURIComponent(sanitizedInstanceId)),
+  'REGRESSION (Bug 1): the sanitized DOM instanceId is never baked in as the itemId value — that was the bug (a lookup that could never match, ever)'
+);
+checkSyntax(regressionScript, 'Bug 1 regression');
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

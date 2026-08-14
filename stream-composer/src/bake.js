@@ -346,7 +346,7 @@ function renderPngtuberItem(item, instanceId, assetPathsById) {
     talking: talkingAssetPath,
     mouthOpen: mouthOpenAssetPath,
     mouthClosed: mouthClosedAssetPath,
-  }, p);
+  }, p, item.id);
   return { html, script };
 }
 
@@ -566,6 +566,20 @@ export function collectAssetCopies(project) {
 // popup-slide's compound `${item.id}::slide${i}` key) -> its
 // destRelativePath (from collectAssetCopies),
 // so this function doesn't need to know about the filesystem at all.
+//
+// A pngtuber item baked in 'obs' audio-source mode bakes its RAW item.id
+// (see the `pngtuber-...` instanceId line below, which is a SANITIZED,
+// index-suffixed DOM id built from that same item.id - the two are
+// deliberately kept distinct) as a separate `itemId` query param, so the
+// local relay (src-tauri/src/lib.rs's obs_volume_meter_server_thread) can
+// re-read that item's live obsInputName/micThreshold/holdMs props from the
+// project file on every poll without a re-bake. The relay itself always
+// knows which project is currently open (main.js mirrors `projectFolder`
+// into Rust app state via set_current_project_path) - this function has no
+// need to know the project's file path at all, only the item's id. See
+// pngtuber-engine.js's buildPngtuberScript for how the fallback query
+// params are built for an item whose live lookup fails (including simply
+// never having been saved to disk yet).
 export function buildSceneHtml(project, assetPathsById) {
   const sorted = [...project.items].sort((a, b) => a.zIndex - b.zIndex);
   const parts = sorted.map((item, index) => {

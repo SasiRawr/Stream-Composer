@@ -34,7 +34,18 @@ base64 = "0.22"
 reqwest = { version = "0.13", features = ["blocking"] }
 windows = { version = "0.62.2", features = ["Media_Control", "Foundation", "Storage_Streams"] }
 tiny_http = "0.12.0"
-obws = "0.15.0"
+# "events" feature needed for the OBS live volume-meter relay (InputVolumeMeters
+# is a high-volume event, opt-in only) - see lib.rs's OBS LIVE VOLUME METER
+# RELAY section for the confirmed API shape. Off by default in obws itself.
+obws = { version = "0.15.0", features = ["events"] }
+# Only for EventStream::next() (obws's event stream implements
+# futures_util::Stream, not a bare iterator) - already an obws/tauri
+# transitive dependency, just not previously a direct one.
+futures-util = "0.3"
+# Only for the volume-meter relay's reconnect backoff sleep - already a
+# tauri/obws transitive dependency (tauri's own async runtime IS tokio),
+# just not previously a direct one.
+tokio = { version = "1", features = ["time"] }
 flate2 = "1.1.9"
 tar = "0.4.46"
 

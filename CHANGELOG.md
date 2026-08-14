@@ -4,6 +4,65 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.16.0 — 2026-08-14 (pre-release, pending verification)
+
+Real, requested feature: PNGTuber's talking-animation can now react to a
+live OBS audio input instead of the browser's own microphone capture —
+so the sensitivity slider works like Discord's voice-activation
+setting, without needing a re-bake and re-push to OBS every time it's
+adjusted.
+
+### Added
+- **PNGTuber: "React to an OBS audio source instead of microphone."**
+  New toggle in the properties panel. When on, pick any OBS audio
+  input (mic, Discord, game audio) from a live dropdown — auto-selects
+  the obvious mic-named input if there's exactly one. A new local relay
+  connects to OBS (reusing the same connection settings Push to OBS
+  already saves) and streams that input's live volume to the baked
+  overlay. Changing the sensitivity slider afterward takes effect
+  immediately, live — no re-bake, no re-push.
+- The default microphone mode (`getUserMedia`, unchanged since v1.10.0)
+  is untouched and still has zero dependency on the desktop app once
+  baked — this new mode is purely additive and opt-in.
+
+### Caught and fixed before shipping (worth being honest about)
+A review of the first build found the feature's core promise didn't
+actually work as built: the identifier baked into the overlay never
+matched the real project file, so the "live, no re-bake" mechanism
+silently fell back to a stale snapshot every time, and the sensitivity
+threshold itself was never wired into the live data at all — only the
+raw OBS audio level was ever live. Both are fixed: the overlay now
+carries the project item's real id, and the relay reads the live
+threshold/hold-time straight from the currently open project on every
+poll, matched against a live volume-meter subscription to OBS's own
+input (a linear amplitude reading, not the meter-in-dB it was first
+assumed to be — also caught before shipping).
+
+The same review found a real security gap: the relay was trusting a
+file path supplied by the request itself, with no authentication —
+meaning any local web page open at the same time as Stream Composer
+Suite, not just the OBS overlay, could have made the app open an
+arbitrary file, or query whether a chosen OBS input currently has
+audio. Fixed — the relay now tracks the currently open project itself
+(mirrored from the app's own state) instead of trusting anything the
+request claims.
+
+### Known limitation, documented honestly
+This relay's OBS connection lives entirely on localhost with no
+authentication (same posture as the Kokoro/Chatterbox/Now Playing
+sidecars already shipped) — any other local web content running at the
+same time could still query whether your selected OBS input currently
+has audio. A real auth layer for these local sidecars is out of scope
+for this release.
+
+### Verification note
+Full test suite passes (25/25 files), cold build succeeds, the whole
+data path was traced against `obws`'s actual source (not assumed) and
+verified by an independent review pass. The live OBS connection and
+the actual feel of OBS's peak-based volume reading versus the existing
+mic mode's RMS averaging genuinely need a hands-on test with real OBS
+running — flagged clearly in this version's testing checklist.
+
 ## v1.15.0 — 2026-08-14 (pre-release, pending verification)
 
 Two fast-follows, orchestrated across a team of specialist agents in one
