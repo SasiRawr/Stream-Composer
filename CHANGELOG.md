@@ -4,6 +4,37 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.16.3 — 2026-08-15 (pre-release, pending verification)
+
+Brings the `.msi` installer to branding parity with the `.exe`.
+
+### Added
+- **Branded `.msi` installer** — the same TheNerdyBox imagery now
+  appears in the WiX installer's banner and dialog panels (previously
+  completely generic/untouched).
+- **Install path now nests under TheNerdyBox** in the `.msi` too —
+  `C:\Program Files\TheNerdyBox\Stream Composer Suite\`, matching the
+  `.exe` installer.
+
+### Investigated and deliberately not built
+Considered adding a "Clean Install vs Upgrade" choice dialog to both
+installers. Found that MSI's upgrade path is already fully native —
+`MajorUpgrade` already replaces an old install with the new one
+atomically and safely, with zero custom scripting. Adding a manual
+choice would mean building real custom UI to let users pick between
+two options where one doesn't actually offer anything the automatic
+path doesn't already guarantee. Recommending against building this for
+either installer unless a real, separate need shows up later (e.g. a
+troubleshooting "reset install" tool, not a wizard step on every
+normal upgrade).
+
+### Verification note
+`.msi` compiles clean with the new banner/dialog images and install
+path. As with the `.exe` branding work, the exact on-screen look
+couldn't be confirmed from here — a native installer GUI can't be
+driven interactively. Flagged in this version's own test notes.
+
+
 ## v1.16.2 — 2026-08-15 (pre-release, pending verification)
 
 Fix for a real bug in v1.16.1: the new "Check us out on the web"
