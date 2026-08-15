@@ -4,6 +4,45 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.16.1 — 2026-08-15 (pre-release, pending verification)
+
+Installer-only patch: real TheNerdyBox branding in the Windows installer
+itself, not just the app.
+
+### Added
+- **Branded installer.** A custom-built header image and welcome/finish
+  sidebar image (both generated from the actual TheNerdyBox logo)
+  replace NSIS's generic stock graphics throughout the setup wizard.
+- **Install location now nests under a publisher folder** —
+  `C:\Program Files\TheNerdyBox\Stream Composer Suite\` instead of
+  installing directly into Program Files' root. Leaves room for any
+  future TheNerdyBox apps to sit alongside it.
+- **Start Menu folder now defaults to "TheNerdyBox"** instead of the
+  product name — still user-editable on the Start Menu page, same as
+  before.
+- **New "Check us out on the web" checkbox** on the finish page,
+  checked by default. If still checked when you click Finish, it opens
+  https://thenerdybox.com in your default browser.
+
+### How this was built
+NSIS's Modern UI 2 only supports two built-in finish-page checkboxes,
+and both were already spoken for (Launch app, Create desktop shortcut)
+— the website checkbox is a genuinely custom third control added via
+the same nsDialogs technique this installer's uninstaller page already
+used for its own custom checkbox, not a new pattern. The underlying
+template is Tauri's own default NSIS installer (pulled from the exact
+tauri-cli v2.11.4 tag this project uses, not assumed), with only the
+install-path and finish-page pieces changed — everything else, including
+the existing pre-install upgrade-warning hook, is untouched.
+
+### Verification note
+The custom NSIS template compiles clean (no warnings on the new bitmap
+assets), and the install-path/Start-Menu-folder config values are
+Tauri's own documented mechanism, not custom scripting. The one thing
+that couldn't be verified from here: the actual on-screen look of the
+new images and the exact vertical position of the new checkbox relative
+to the existing two — flagged clearly for a real look during testing.
+
 ## v1.16.0 — 2026-08-14 (pre-release, pending verification)
 
 Real, requested feature: PNGTuber's talking-animation can now react to a
