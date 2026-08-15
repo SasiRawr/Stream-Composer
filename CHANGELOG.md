@@ -4,6 +4,21 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.16.2 — 2026-08-15 (pre-release, pending verification)
+
+Fix for a real bug in v1.16.1: the new "Check us out on the web"
+finish-page checkbox never actually appeared.
+
+### Fixed
+- The checkbox's position was computed using the wrong page's layout —
+  the coordinate math was copied from the uninstaller's confirm page,
+  which doesn't have a sidebar image, so it landed underneath the
+  logo artwork on the finish page instead of in the visible text
+  column. Now built using NSIS's own dialog-unit positioning system
+  (the same one its built-in "Launch app"/"Create desktop shortcut"
+  checkboxes use), placed directly below them — confirmed against
+  NSIS's actual Modern UI 2 source, not guessed a second time.
+
 ## v1.16.1 — 2026-08-15 (pre-release, pending verification)
 
 Installer-only patch: real TheNerdyBox branding in the Windows installer

@@ -415,9 +415,22 @@ Var AppStartMenuFolder
 !define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
 ; Extra "Check us out on the web" checkbox - the two built-in MUI2 finish-page
 ; checkbox slots above (SHOWREADME, RUN) are already taken, so this is a third,
-; hand-added control via nsDialogs, following the exact same pattern already
-; used for the uninstaller's "Delete app data" checkbox further down this file
-; (see un.ConfirmShow/un.ConfirmLeave) - not a new technique for this template.
+; hand-added control. Uses nsDialogs' own ${NSD_CreateCheckbox}, matching
+; EXACTLY how MUI2's own Finish.nsh builds the Run/ShowReadme checkboxes
+; (confirmed by reading that file directly from the local NSIS install,
+; not guessed) - NOT the raw CreateWindowEx/GetDpiForWindow technique the
+; uninstaller's Confirm page uses further down this file, which only
+; applies there because that page is an older classic dialog resource, not
+; an nsDialogs page. Coordinates are in "u" (dialog units), auto-converted
+; by nsDialogs - x=120u/width=195u matches MUI2's own text-column position
+; (the sidebar bitmap occupies 0u-109u, so anything at x=0 renders behind
+; it - the first attempt at this checkbox used raw pixel math copied from
+; the wrong reference page and was invisible for exactly that reason).
+; y=130u places it directly below MUI's own two checkboxes (Run at 90u,
+; ShowReadme at 110u, both 10u tall - computed from Finish.nsh's own
+; MUI_FINISHPAGE_RUN_TOP/SHOWREADME_TOP formula, which can't be referenced
+; directly here since MUI unsets those defines right after building its
+; own controls).
 Var WebsiteCheckbox
 Var WebsiteCheckboxState
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishShowWebsiteCheckbox
@@ -426,34 +439,14 @@ Var WebsiteCheckboxState
 !insertmacro MUI_PAGE_FINISH
 
 Function FinishShowWebsiteCheckbox
-  ; $1 inner dialog HWND, $2 window DPI, $3 style, $4 x, $5 y, $6 width, $7 height
-  FindWindow $1 "#32770" "" $HWNDPARENT
-  System::Call "user32::GetDpiForWindow(p r1) i .r2"
-  ${If} $(^RTL) = 1
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE} | ${WS_EX_LAYOUTRTL}"
-    IntOp $4 50 * $2
-  ${Else}
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE}"
-    IntOp $4 0 * $2
-  ${EndIf}
-  ; Positioned well above the RUN/SHOWREADME checkboxes, which anchor near
-  ; the bottom of the page - this sits in the otherwise-empty middle area.
-  IntOp $5 90 * $2
-  IntOp $6 400 * $2
-  IntOp $7 25 * $2
-  IntOp $4 $4 / 96
-  IntOp $5 $5 / 96
-  IntOp $6 $6 / 96
-  IntOp $7 $7 / 96
-  System::Call 'user32::CreateWindowEx(i r3, w "${__NSD_CheckBox_CLASS}", w "Check us out on the web", i ${__NSD_CheckBox_STYLE}, i r4, i r5, i r6, i r7, p r1, i0, i0, i0) i .s'
+  ${NSD_CreateCheckbox} 120u 130u 195u 10u "Check us out on the web"
   Pop $WebsiteCheckbox
-  SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
-  SendMessage $WebsiteCheckbox ${WM_SETFONT} $1 1
-  SendMessage $WebsiteCheckbox ${BM_SETCHECK} ${BST_CHECKED} 0
+  SetCtlColors $WebsiteCheckbox "${MUI_TEXTCOLOR}" "${MUI_BGCOLOR}"
+  ${NSD_SetState} $WebsiteCheckbox ${BST_CHECKED}
 FunctionEnd
 
 Function FinishLeaveWebsiteCheckbox
-  SendMessage $WebsiteCheckbox ${BM_GETCHECK} 0 0 $WebsiteCheckboxState
+  ${NSD_GetState} $WebsiteCheckbox $WebsiteCheckboxState
   ${If} $WebsiteCheckboxState == ${BST_CHECKED}
     ExecShell "open" "https://thenerdybox.com"
   ${EndIf}
