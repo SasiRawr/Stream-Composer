@@ -966,6 +966,89 @@ same category Komiko already occupies. Still explicitly deferred, not
 scheduled to any version — this is context for whenever full VTuber
 rigging gets raised again.
 
+### Full VTuber/Animaze-style face-tracking avatar — reactivated with a concrete, buildable architecture (2026-08-14)
+
+Reactivated by Harvey with a real reference: `_examples\blowfish.png`, a
+simple round mascot avatar (the actual real Animaze avatar "PuffPuff," a
+known TikTok mocap virtual being, confirmed via research — not a stock
+default) reacting live to a streamer via Animaze. This is the "eventually
+raised again" moment the deferral note above was written for. A full
+4-track parallel research pass (MediaPipe technical specs, OBS Browser
+Source webcam feasibility, Animaze/VTube Studio's actual architecture,
+this app's own bake-pipeline constraints) converged independently on one
+answer, closing the gap the prior research pass (above) left open.
+
+**The missing piece was rigging, and it's solved by format choice, not
+automation.** The prior research pass concluded auto-rigging arbitrary
+flat art is unsolved. This pass found the real answer: don't auto-rig —
+use **VRM**, a standardized, ALREADY-rigged humanoid avatar format,
+freely creatable by anyone via VRoid Studio. VRM avatars ship with a
+defined expression/blendshape system that maps close to directly onto
+ARKit-style blendshapes — which is exactly what MediaPipe Face Landmarker
+outputs. This sidesteps the rigging problem entirely rather than solving
+it.
+
+**Tracking: MediaPipe Face Landmarker, confirmed production-proven** —
+VTube Studio itself ships MediaPipe as one of its tracker options, not
+just a promising library. Outputs 478 3D landmarks, a head-pose matrix,
+AND 52 ARKit-style blendshape scores (`jawOpen`, `mouthSmileLeft`,
+`eyeBlinkLeft`, etc.) ready to drive an avatar with no geometric
+interpretation needed. Apache 2.0, covers the models too. ~10-15MB
+model+WASM budget. Community-reported ~30fps on CPU alone (no official
+Google benchmark found — verify empirically). **One real gotcha to
+close before shipping**: MediaPipe's Solution API phones home
+periodically for updates/telemetry even though inference itself is
+on-device — needs verifying/pinning to fully local before this ships,
+to match this app's local-first stance.
+
+**Architecture: NOT a Browser Source item type — a standalone companion
+window, same category as Kokoro/Chatterbox's sidecar pattern.** Four
+independent signals all point the same direction:
+1. VTube Studio and Animaze are BOTH standalone desktop apps, unanimously
+   — neither runs tracking inside an OBS Browser Source. They reach OBS
+   via virtual camera (built into both, no separate driver needed as of
+   Animaze v1.27) or Window Capture as a fallback.
+2. The one real "MediaPipe + OBS" hybrid project found in research runs
+   MediaPipe in a **separate Electron app**, piping data to OBS over
+   WebSocket — nobody runs it inside CEF Browser Source directly.
+3. A real, unresolved technical risk exists specifically for the
+   in-Browser-Source path: multithreaded WASM needs COOP/COEP
+   cross-origin-isolation headers, and there's no confirmed way to set
+   those for a local file loaded into OBS's Browser Source.
+4. This app's OWN bake pipeline has zero precedent for shipping a fixed
+   binary/library into baked `scene.html` output — everything there is
+   `.toString()`-inlined plain JS; a WASM binary structurally can't use
+   that trick. But this app DOES already have the right pattern for
+   heavy local processing — Kokoro and Chatterbox both run as local
+   sidecar processes, not inlined into baked HTML. This feature fits
+   that same category, not PNGTuber's.
+
+**Realistic MVP shape**: a new Tauri window does webcam capture (Tauri's
+own WebView, not OBS's CEF — cleaner permission story) → MediaPipe
+Face Landmarker (blendshape mode) → renders a VRM avatar in real time
+via a WebGL/three.js + VRM-loader pipeline (a mature, purpose-built
+ecosystem — VRM is literally designed for exactly this rendering path).
+OBS captures that window via native Window Capture — zero new OBS-side
+complexity, matches the ecosystem's own fallback method, no virtual
+camera driver required for v1 (real fast-follow candidate, not
+MVP-blocking). Real, meaningful differentiation vs. Animaze: free, no
+45-minute session cap, no subscription — matches the standing free-tier
+policy directly, not just incidentally.
+
+**Scope explicitly NOT in v1**: Live2D/2D custom-art rigging (still
+genuinely unsolved, per the prior research pass — VRM sidesteps it,
+doesn't solve it), virtual camera output (Window Capture covers v1),
+iPhone/ARKit tracking path (webcam-only for v1, matches the reference
+screenshot's actual setup).
+
+Full research write-up (this pass): logged in project memory
+`project_stream-builder-v2`, not yet published as a separate Artifact —
+see RESTART HERE.md's top entry for the session this was scoped in.
+Task #62 tracks this. Genuinely bigger in scope than any single item
+type shipped so far — closer to PNGTuber+Chat-Overlay+TTS combined than
+to "one more overlay type." Deserves its own dedicated build session,
+not a bolt-on to whatever else is in flight.
+
 ### Multi-participant Discord-voice PNGTuber — genuinely simpler than expected, no bot needed (2026-08-11)
 
 Harvey described a real feature seen elsewhere: multiple people in a
