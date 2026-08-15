@@ -27,10 +27,24 @@ export function defaultBackgroundProps() {
     gradientStyle: 'linear', // 'linear' | 'radial'
     gradientFrom: '#7c5cff',
     gradientTo: '#0a0a12',
+    gradientMidEnabled: false,
+    gradientMid: '#a594ff', // only used when gradientMidEnabled - fixed at the 0.5 stop
     gradientAngle: 135,
     overlayOpacity: 0.55, // image-gradient mode only: how strong the gradient sits over the photo
   };
 }
+
+// TheNerdyBox's real brand tokens (@thenerdybox/ui, the org's actual design
+// system - not invented here) as a one-click preset: a radial glow from
+// violet-soft (brightest) through violet to void at the edge, matching the
+// site's own "ambient wash" gradient language rather than a flat 2-color guess.
+export const THENERDYBOX_PRESET = {
+  gradientStyle: 'radial',
+  gradientFrom: '#a594ff', // --violet-soft
+  gradientMid: '#7c5cff',  // --violet
+  gradientTo: '#0a0a12',   // --void
+  gradientMidEnabled: true,
+};
 
 // CSS `background-size: cover`-equivalent: the largest centered rect of the
 // image's own aspect ratio that fully covers a box of boxWidth x boxHeight,
@@ -85,6 +99,9 @@ export function resolveBackgroundPlan(props, width, height, imageSize) {
   plan.gradientStyle = props.gradientStyle;
   plan.fromColor = isOverlay ? hexToRgba(props.gradientFrom, props.overlayOpacity) : props.gradientFrom;
   plan.toColor = isOverlay ? hexToRgba(props.gradientTo, props.overlayOpacity) : props.gradientTo;
+  if (props.gradientMidEnabled) {
+    plan.midColor = isOverlay ? hexToRgba(props.gradientMid, props.overlayOpacity) : props.gradientMid;
+  }
 
   if (props.gradientStyle === 'radial') {
     plan.radial = { cx: width / 2, cy: height / 2, r: Math.max(width, height) / 2 };
@@ -119,6 +136,7 @@ export function drawBackground(ctx, width, height, props, image) {
     ? ctx.createRadialGradient(plan.radial.cx, plan.radial.cy, 0, plan.radial.cx, plan.radial.cy, plan.radial.r)
     : ctx.createLinearGradient(plan.linear.x1, plan.linear.y1, plan.linear.x2, plan.linear.y2);
   gradient.addColorStop(0, plan.fromColor);
+  if (plan.midColor) gradient.addColorStop(0.5, plan.midColor);
   gradient.addColorStop(1, plan.toColor);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);

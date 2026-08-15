@@ -4,6 +4,43 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.16.4 — 2026-08-15 (pre-release, pending verification)
+
+Background Generator improvements, plus a real bug fix found while
+building them.
+
+### Added
+- **Hex color input** next to every color picker in the Background
+  Generator (solid color, gradient stops) — type or paste a hex value
+  directly instead of only using the native color-picker popup. Invalid
+  input is flagged inline and simply doesn't apply until corrected.
+- **A third, optional gradient color stop.** Toggle "Add a middle color
+  stop" to go from a 2-color to a 3-color gradient (fixed at the
+  midpoint).
+- **"Use TheNerdyBox colors" preset button** — one click applies a
+  radial glow using the actual TheNerdyBox brand tokens (violet-soft →
+  violet → void), sourced from `@thenerdybox/ui`'s real `tokens.css`,
+  not guessed from a logo.
+
+### Fixed
+- **A real, previously-undiscovered bug affecting hidden fields
+  app-wide, not just this dialog.** Found while testing the new
+  controls: setting an element's `hidden` property to `true` was
+  updating the DOM correctly, but a CSS specificity tie meant the
+  `.field`/`.field-row` class styling silently overrode the browser's
+  own `display: none` for hidden elements — so fields marked hidden
+  were still rendering, visually, everywhere this pattern is used
+  across the app. Confirmed via live interactive testing, not just
+  reading the code. Fixed with one CSS rule at higher specificity.
+
+### Verification note
+All of this was verified against the actual running app in a real
+browser (not just unit tests on the underlying logic) — the hex
+inputs, the middle-stop toggle, the preset button, and the field-
+visibility fix were each exercised through real DOM interaction and
+confirmed working before shipping.
+
+
 ## v1.16.3 — 2026-08-15 (pre-release, pending verification)
 
 Brings the `.msi` installer to branding parity with the `.exe`.

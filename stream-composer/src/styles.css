@@ -126,6 +126,18 @@ h2 {
 }
 .field-row .field { flex: 1; }
 
+/* Real pre-existing bug, found via live-DOM testing while building the
+   Background Generator's new fields, not introduced by them: the native
+   `hidden` attribute's UA-stylesheet `display: none` ties in specificity
+   with the class rules above (both 0,1,0), and since these come later in
+   the cascade they silently won - `el.hidden = true` was setting the
+   attribute correctly but never actually hiding anything on a
+   .field/.field-row element, anywhere in the app. This re-asserts it at
+   higher specificity so the attribute actually works again. */
+.field[hidden], .field-row[hidden] {
+  display: none;
+}
+
 label {
   font-size: 12px;
   color: #918eae;
@@ -148,6 +160,26 @@ input[type="color"] {
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 8px;
   padding: 3px;
+}
+
+.color-with-hex {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.color-with-hex input[type="color"] {
+  width: 44px;
+  flex: none;
+  padding: 3px;
+}
+.color-with-hex .hex-input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  text-transform: uppercase;
+}
+.color-with-hex .hex-input.invalid {
+  border-color: #ff5a5a;
 }
 
 input:focus, select:focus, textarea:focus {

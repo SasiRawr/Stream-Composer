@@ -7,7 +7,7 @@
 // Run with: node src/background-generator.test.mjs
 // ============================================================================
 
-import { defaultBackgroundProps, coverFitRect, hexToRgba, resolveBackgroundPlan } from './background-generator.js';
+import { defaultBackgroundProps, coverFitRect, hexToRgba, resolveBackgroundPlan, THENERDYBOX_PRESET } from './background-generator.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -62,6 +62,22 @@ assert(ghostPlan.fromColor === 'rgba(0, 0, 0, 0.4)', `an image-gradient plan's g
 
 const noImagePlan = resolveBackgroundPlan({ ...defaultBackgroundProps(), fillType: 'image-gradient' }, 1920, 1080, null);
 assert(noImagePlan.imageRect === undefined, 'image-gradient mode with no image loaded yet does not throw, just resolves without an image rect');
+
+// ---- third gradient stop (gradientMidEnabled) ----
+const noMidPlan = resolveBackgroundPlan({ ...defaultBackgroundProps(), fillType: 'gradient' }, 1000, 1000, null);
+assert(noMidPlan.midColor === undefined, 'a gradient plan with no middle stop enabled has no midColor at all (not even null/empty)');
+
+const midPlan = resolveBackgroundPlan({ ...defaultBackgroundProps(), fillType: 'gradient', gradientMidEnabled: true, gradientMid: '#abcdef' }, 1000, 1000, null);
+assert(midPlan.midColor === '#abcdef', `a gradient plan with the middle stop enabled carries its plain hex color (got ${midPlan.midColor})`);
+
+const midOverlayPlan = resolveBackgroundPlan({ ...defaultBackgroundProps(), fillType: 'image-gradient', gradientMidEnabled: true, gradientMid: '#000000', overlayOpacity: 0.3 }, 1000, 1000, { width: 10, height: 10 });
+assert(midOverlayPlan.midColor === 'rgba(0, 0, 0, 0.3)', `an image-gradient plan's middle stop also carries alpha, same as the other two stops (got ${midOverlayPlan.midColor})`);
+
+// ---- THENERDYBOX_PRESET ----
+assert(THENERDYBOX_PRESET.gradientMidEnabled === true, 'the TheNerdyBox preset uses all three stops, not just two');
+assert(THENERDYBOX_PRESET.gradientStyle === 'radial', 'the TheNerdyBox preset is a radial glow, not linear');
+const presetPlan = resolveBackgroundPlan({ ...defaultBackgroundProps(), fillType: 'gradient', ...THENERDYBOX_PRESET }, 1920, 1080, null);
+assert(presetPlan.midColor === THENERDYBOX_PRESET.gradientMid, 'the preset\'s middle stop actually reaches the resolved plan when spread onto real props');
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

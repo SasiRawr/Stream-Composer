@@ -554,7 +554,10 @@
 
   <div class="field" id="bgSolidColorField">
     <label for="bgSolidColor">Color</label>
-    <input type="color" id="bgSolidColor" value="#0a0a12">
+    <div class="color-with-hex">
+      <input type="color" id="bgSolidColor" value="#0a0a12">
+      <input type="text" id="bgSolidColorHex" class="hex-input" value="#0a0a12" maxlength="7" spellcheck="false">
+    </div>
   </div>
 
   <div class="field" id="bgImagePickField" hidden>
@@ -564,9 +567,34 @@
   </div>
 
   <div id="bgGradientFields" hidden>
+    <button class="secondary block" id="bgNerdyBoxPresetBtn" type="button">Use TheNerdyBox colors</button>
     <div class="field-row">
-      <div class="field"><label>From</label><input type="color" id="bgGradientFrom" value="#7c5cff"></div>
-      <div class="field"><label>To</label><input type="color" id="bgGradientTo" value="#0a0a12"></div>
+      <div class="field">
+        <label>From</label>
+        <div class="color-with-hex">
+          <input type="color" id="bgGradientFrom" value="#7c5cff">
+          <input type="text" id="bgGradientFromHex" class="hex-input" value="#7c5cff" maxlength="7" spellcheck="false">
+        </div>
+      </div>
+      <div class="field">
+        <label>To</label>
+        <div class="color-with-hex">
+          <input type="color" id="bgGradientTo" value="#0a0a12">
+          <input type="text" id="bgGradientToHex" class="hex-input" value="#0a0a12" maxlength="7" spellcheck="false">
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="bgGradientMidEnabled"> Add a middle color stop</label>
+    </div>
+    <div class="field-row" id="bgGradientMidField" hidden>
+      <div class="field">
+        <label>Middle</label>
+        <div class="color-with-hex">
+          <input type="color" id="bgGradientMid" value="#a594ff">
+          <input type="text" id="bgGradientMidHex" class="hex-input" value="#a594ff" maxlength="7" spellcheck="false">
+        </div>
+      </div>
     </div>
     <div class="field-row">
       <div class="field">

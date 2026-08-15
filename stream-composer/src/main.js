@@ -32,7 +32,7 @@ import {
   CHAT_PLATFORMS, visibleChatPlatforms,
   activePlatformKeys, ensurePrimarySelected, selectPrimaryPlatform, selectSecondaryPlatform, setMultiChatEnabled,
 } from './chat-platforms.js';
-import { defaultBackgroundProps, drawBackground } from './background-generator.js';
+import { defaultBackgroundProps, drawBackground, THENERDYBOX_PRESET } from './background-generator.js';
 import { defaultPollyProps, POLLY_VOICE_SUGGESTIONS } from './polly-tts.js';
 import { computeCalibratedThreshold } from './pngtuber-engine.js';
 
@@ -3404,6 +3404,49 @@ function bgUpdateFieldVisibility() {
   document.getElementById('bgGradientFields').hidden = bgProps.fillType === 'solid';
   document.getElementById('bgOverlayOpacityField').hidden = bgProps.fillType !== 'image-gradient';
   document.getElementById('bgGradientAngleField').hidden = bgProps.gradientStyle === 'radial';
+  document.getElementById('bgGradientMidField').hidden = !bgProps.gradientMidEnabled;
+}
+
+// Shared by every color+hex pair in this dialog: keeps the native <input
+// type="color"> swatch and its paired hex text field in sync in both
+// directions, without fighting the browser's own color picker UI.
+function bgWireColorHexPair(colorId, hexId, propKey) {
+  const colorEl = document.getElementById(colorId);
+  const hexEl = document.getElementById(hexId);
+  colorEl.addEventListener('input', (e) => {
+    bgProps[propKey] = e.target.value;
+    hexEl.value = e.target.value;
+    hexEl.classList.remove('invalid');
+    bgRedrawPreview();
+  });
+  hexEl.addEventListener('input', (e) => {
+    const raw = e.target.value.trim();
+    const normalized = raw.startsWith('#') ? raw : '#' + raw;
+    if (/^#[0-9a-fA-F]{6}$/.test(normalized)) {
+      hexEl.classList.remove('invalid');
+      bgProps[propKey] = normalized;
+      colorEl.value = normalized;
+      bgRedrawPreview();
+    } else {
+      // Don't fight the user mid-keystroke (e.g. typing "#7c5" is a real
+      // in-progress state) - just flag it, apply nothing until it's valid.
+      hexEl.classList.add('invalid');
+    }
+  });
+}
+
+function bgApplyPreset(preset) {
+  Object.assign(bgProps, preset);
+  document.getElementById('bgGradientFrom').value = bgProps.gradientFrom;
+  document.getElementById('bgGradientFromHex').value = bgProps.gradientFrom;
+  document.getElementById('bgGradientTo').value = bgProps.gradientTo;
+  document.getElementById('bgGradientToHex').value = bgProps.gradientTo;
+  document.getElementById('bgGradientMid').value = bgProps.gradientMid;
+  document.getElementById('bgGradientMidHex').value = bgProps.gradientMid;
+  document.getElementById('bgGradientMidEnabled').checked = bgProps.gradientMidEnabled;
+  document.getElementById('bgGradientStyle').value = bgProps.gradientStyle;
+  bgUpdateFieldVisibility();
+  bgRedrawPreview();
 }
 
 function bgRedrawPreview() {
@@ -3420,8 +3463,14 @@ function openBackgroundGeneratorDialog() {
   document.getElementById('bgResolution').value = `${bgProps.canvasWidth}x${bgProps.canvasHeight}`;
   document.getElementById('bgFillType').value = bgProps.fillType;
   document.getElementById('bgSolidColor').value = bgProps.solidColor;
+  document.getElementById('bgSolidColorHex').value = bgProps.solidColor;
   document.getElementById('bgGradientFrom').value = bgProps.gradientFrom;
+  document.getElementById('bgGradientFromHex').value = bgProps.gradientFrom;
   document.getElementById('bgGradientTo').value = bgProps.gradientTo;
+  document.getElementById('bgGradientToHex').value = bgProps.gradientTo;
+  document.getElementById('bgGradientMid').value = bgProps.gradientMid;
+  document.getElementById('bgGradientMidHex').value = bgProps.gradientMid;
+  document.getElementById('bgGradientMidEnabled').checked = bgProps.gradientMidEnabled;
   document.getElementById('bgGradientStyle').value = bgProps.gradientStyle;
   document.getElementById('bgGradientAngle').value = String(bgProps.gradientAngle);
   document.getElementById('bgOverlayOpacity').value = String(Math.round(bgProps.overlayOpacity * 100));
@@ -3474,17 +3523,18 @@ function wireBackgroundGeneratorDialog() {
     bgRedrawPreview();
   });
 
-  document.getElementById('bgSolidColor').addEventListener('input', (e) => {
-    bgProps.solidColor = e.target.value;
+  bgWireColorHexPair('bgSolidColor', 'bgSolidColorHex', 'solidColor');
+  bgWireColorHexPair('bgGradientFrom', 'bgGradientFromHex', 'gradientFrom');
+  bgWireColorHexPair('bgGradientTo', 'bgGradientToHex', 'gradientTo');
+  bgWireColorHexPair('bgGradientMid', 'bgGradientMidHex', 'gradientMid');
+
+  document.getElementById('bgGradientMidEnabled').addEventListener('change', (e) => {
+    bgProps.gradientMidEnabled = e.target.checked;
+    bgUpdateFieldVisibility();
     bgRedrawPreview();
   });
 
-  ['bgGradientFrom', 'bgGradientTo'].forEach((id) => {
-    document.getElementById(id).addEventListener('input', (e) => {
-      bgProps[id === 'bgGradientFrom' ? 'gradientFrom' : 'gradientTo'] = e.target.value;
-      bgRedrawPreview();
-    });
-  });
+  document.getElementById('bgNerdyBoxPresetBtn').addEventListener('click', () => bgApplyPreset(THENERDYBOX_PRESET));
 
   document.getElementById('bgGradientStyle').addEventListener('change', (e) => {
     bgProps.gradientStyle = e.target.value;
