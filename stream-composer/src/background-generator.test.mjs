@@ -7,7 +7,7 @@
 // Run with: node src/background-generator.test.mjs
 // ============================================================================
 
-import { defaultBackgroundProps, coverFitRect, hexToRgba, resolveBackgroundPlan, THENERDYBOX_PRESET } from './background-generator.js';
+import { defaultBackgroundProps, coverFitRect, hexToRgba, hexToRgb, rgbToHex, resolveBackgroundPlan, THENERDYBOX_PRESET } from './background-generator.js';
 
 let failures = 0;
 function assert(cond, msg) {
@@ -42,6 +42,14 @@ assert(hexToRgba('#000000', 0.5) === 'rgba(0, 0, 0, 0.5)', `half-opacity black c
 assert(hexToRgba('7c5cff', 1) === 'rgba(124, 92, 255, 1)', 'works without a leading # too');
 assert(hexToRgba('#ffffff', 1.5) === 'rgba(255, 255, 255, 1)', 'alpha above 1 is clamped to 1');
 assert(hexToRgba('#ffffff', -0.5) === 'rgba(255, 255, 255, 0)', 'alpha below 0 is clamped to 0');
+
+// ---- hexToRgb / rgbToHex ----
+const rgbFromViolet = hexToRgb('#7c5cff');
+assert(rgbFromViolet.r === 124 && rgbFromViolet.g === 92 && rgbFromViolet.b === 255, `hexToRgb converts the brand violet correctly (got ${JSON.stringify(rgbFromViolet)})`);
+assert(rgbToHex(124, 92, 255) === '#7c5cff', `rgbToHex is the exact inverse of hexToRgb for the same color (got ${rgbToHex(124, 92, 255)})`);
+assert(rgbToHex(300, -10, 128) === '#ff0080', `rgbToHex clamps out-of-range channel values to 0-255 instead of producing garbage (got ${rgbToHex(300, -10, 128)})`);
+assert(rgbToHex('124', '92', '255') === '#7c5cff', 'rgbToHex accepts string number inputs the same as numeric ones, matching what a number input\'s .value actually gives you');
+assert(rgbToHex(NaN, 0, 0) === '#000000', 'rgbToHex treats a non-numeric channel as 0 rather than throwing or producing NaN in the output');
 
 // ---- resolveBackgroundPlan ----
 const solidPlan = resolveBackgroundPlan({ ...defaultBackgroundProps(), fillType: 'solid', solidColor: '#123456' }, 1920, 1080, null);

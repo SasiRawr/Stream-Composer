@@ -4,6 +4,31 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.16.5 — 2026-08-16 (pre-release, pending verification)
+
+Two more ways to pick a color in the Background Generator, on every
+color picker (solid color, and all three gradient stops).
+
+### Added
+- **RGB number inputs** next to every color picker's hex field — type
+  exact 0-255 red/green/blue values directly. Fully two-way synced with
+  the hex field and the color swatch: change any one of the three and
+  the other two update to match.
+- **Screen-wide eyedropper** ("Pick from screen" / "Pick") next to
+  every color picker, using the browser's native `EyeDropper` API —
+  unlike the built-in color-picker popup, this can sample a pixel
+  anywhere on the screen, not just inside the app window. Falls back to
+  a disabled, clearly-labeled button on browsers/WebView versions that
+  don't support it, rather than a broken control.
+
+### Verification note
+Verified interactively against the real running app (not just the
+underlying pure-function tests): hex→RGB sync, RGB→hex sync, the
+eyedropper applying its result across hex/RGB/swatch together, and that
+each of the four color groups (solid, gradient from/to/mid) works
+independently of the others.
+
+
 ## v1.16.4 — 2026-08-15 (pre-release, pending verification)
 
 Background Generator improvements, plus a real bug fix found while

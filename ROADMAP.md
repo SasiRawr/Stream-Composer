@@ -1785,3 +1785,73 @@ key lives only on the user's own machine, never touches anything we
 run). The one explicitly-carved-out exception: a future Patreon/Discord
 presence for community announcements, updates, and feature requests —
 not a data-collection surface, just a public communication channel.
+
+---
+
+## Colour as a project asset, and "stream-safe" validation (2026-08-15) — not scoped, not built
+
+Harvey hit this while using the Background Generator: he wanted TheNerdyBox's own
+background and the tool only takes three RGB integers, so he had to be told the
+numbers. His conclusion was to add hex entry as an **advanced option** — the simple
+picker stays default for streamers with no brand, hex appears for people who already
+have a scheme. That's correct and should ship.
+
+What follows is the same problem framed differently, because the narrow version
+("add a hex box") hides a larger one.
+
+### The reframe: colour is currently per-widget and per-session
+
+Every module asks for colours independently, and forgets them. Background Generator,
+Stinger Builder, Countdown, Chat/TTS overlay, PNGTuber — each is its own decision,
+re-made each time. Nothing in the suite knows what the user's brand *is*.
+
+Making a **project-level palette** a first-class object changes that: define once,
+every module reads from it. It also makes several things possible that the hex box
+alone does not.
+
+- **Import a palette instead of typing one.** Almost nobody has their brand as a list
+  of hex codes, but nearly everyone has it *somewhere* — a logo, a Discord banner, a
+  website, an existing overlay PNG. Extracting the dominant colours from an uploaded
+  image is a far better on-ramp than six numeric fields, and it fits the
+  guided-walkthrough direction the streamers responded to. Paste-a-block-of-CSS is
+  worth supporting too: it is exactly how a design system hands over its values.
+- **Save to Library already exists** — palettes should live there like any other asset,
+  and be exportable so streamers can swap them. Ships free, per the free-tier rule.
+- **Curated presets** for users with no brand at all, same reasoning as the starter kit.
+- **Per-scene overrides** — a "starting soon" scene usually wants to be darker than the
+  gameplay scene, off the same base palette.
+
+### The part nobody else does: validate colour against how streams are actually watched
+
+This is the genuinely undiscovered feature, and it comes from applying
+`@thenerdybox/ui`'s own hard rule — *never add a colour without measuring every
+pairing it takes part in* — to video output rather than web pages.
+
+A design tool checks colour against a monitor. A **stream** is a compressed video
+watched on a phone, often at 480p, often at a glance. Different constraints, and no
+overlay tool in this space checks any of them:
+
+- **Contrast on the actual composite.** Overlay text sits on the generated background;
+  most amateur overlays fail here and nobody tells the user. WCAG maths already exists
+  in the design system and can be reused directly.
+- **Compression banding.** Subtle dark gradients — precisely the on-brand
+  `#0a0a12 → #12121f` kind — band badly at Twitch/YouTube bitrates. The tool generates
+  the gradient, so it can warn and offer a dithered variant.
+- **Chroma subsampling.** 4:2:0 smears saturated colour, so thin 1px accents in a
+  strong brand violet or red partially vanish. Warn when an accent is used at a stroke
+  width that will not survive.
+- **Broadcast range.** Pure `#000`/`#fff` clip on some encoders.
+
+A "this will look bad on stream, here's why, here's a fix" pass is a real differentiator
+and cheap to compute — it is arithmetic on values the tool already holds, not analysis
+of video.
+
+### Suggested order
+
+1. Hex entry as an advanced option (Harvey's original ask — small, unblocks him now)
+2. Project palette + Save to Library + presets
+3. Import from image / paste CSS
+4. Stream-safe validation
+
+Nothing here is scoped or estimated yet. Item 4 is the one worth prototyping early
+even if it ships late, because it is the part that cannot be copied quickly.

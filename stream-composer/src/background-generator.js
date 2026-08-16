@@ -80,6 +80,25 @@ export function hexToRgba(hex, alpha) {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
+// Plain {r,g,b} <-> hex conversions - separate from hexToRgba above, which
+// returns a ready-to-use CSS string with alpha baked in. These back the
+// standalone R/G/B number inputs (a different input method from the hex
+// text field, not a duplicate of it - same color, three ways in).
+export function hexToRgb(hex) {
+  const clean = (hex || '').replace('#', '');
+  return {
+    r: parseInt(clean.slice(0, 2), 16) || 0,
+    g: parseInt(clean.slice(2, 4), 16) || 0,
+    b: parseInt(clean.slice(4, 6), 16) || 0,
+  };
+}
+
+export function rgbToHex(r, g, b) {
+  const clamp = (n) => Math.max(0, Math.min(255, Math.round(Number(n) || 0)));
+  const toHex = (n) => clamp(n).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
 // Pure description of what to draw — a real <canvas> 2D context turns this
 // into actual draw calls (drawBackground below), but the *decision* of
 // what gradient/colors/rect to use is computed here where it's testable.

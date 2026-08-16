@@ -32,7 +32,7 @@ import {
   CHAT_PLATFORMS, visibleChatPlatforms,
   activePlatformKeys, ensurePrimarySelected, selectPrimaryPlatform, selectSecondaryPlatform, setMultiChatEnabled,
 } from './chat-platforms.js';
-import { defaultBackgroundProps, drawBackground, THENERDYBOX_PRESET } from './background-generator.js';
+import { defaultBackgroundProps, drawBackground, THENERDYBOX_PRESET, hexToRgb, rgbToHex } from './background-generator.js';
 import { defaultPollyProps, POLLY_VOICE_SUGGESTIONS } from './polly-tts.js';
 import { computeCalibratedThreshold } from './pngtuber-engine.js';
 
@@ -3407,42 +3407,79 @@ function bgUpdateFieldVisibility() {
   document.getElementById('bgGradientMidField').hidden = !bgProps.gradientMidEnabled;
 }
 
-// Shared by every color+hex pair in this dialog: keeps the native <input
-// type="color"> swatch and its paired hex text field in sync in both
-// directions, without fighting the browser's own color picker UI.
+// Pushes a hex color into a color+hex+RGB group's three fields at once,
+// without touching listeners - used for initial dialog setup and presets,
+// where bgProps is being set programmatically rather than from user input.
+function bgSetColorFieldValue(colorId, hexId, hex) {
+  document.getElementById(colorId).value = hex;
+  document.getElementById(hexId).value = hex;
+  const rgb = hexToRgb(hex);
+  document.getElementById(colorId + 'R').value = rgb.r;
+  document.getElementById(colorId + 'G').value = rgb.g;
+  document.getElementById(colorId + 'B').value = rgb.b;
+}
+
+// Shared by every color group in this dialog: keeps the native <input
+// type="color"> swatch, its paired hex text field, and its R/G/B number
+// inputs all in sync in every direction (whichever one the user touches
+// drives the other two), without fighting the browser's own color picker
+// UI. Also wires the group's "pick from screen" eyedropper button, when
+// the browser supports the EyeDropper API.
 function bgWireColorHexPair(colorId, hexId, propKey) {
   const colorEl = document.getElementById(colorId);
   const hexEl = document.getElementById(hexId);
-  colorEl.addEventListener('input', (e) => {
-    bgProps[propKey] = e.target.value;
-    hexEl.value = e.target.value;
+  const rEl = document.getElementById(colorId + 'R');
+  const gEl = document.getElementById(colorId + 'G');
+  const bEl = document.getElementById(colorId + 'B');
+  const eyedropperEl = document.getElementById(colorId + 'Eyedropper');
+
+  function applyColor(hex) {
+    bgProps[propKey] = hex;
+    bgSetColorFieldValue(colorId, hexId, hex);
     hexEl.classList.remove('invalid');
     bgRedrawPreview();
-  });
+  }
+
+  colorEl.addEventListener('input', (e) => applyColor(e.target.value));
+
   hexEl.addEventListener('input', (e) => {
     const raw = e.target.value.trim();
     const normalized = raw.startsWith('#') ? raw : '#' + raw;
     if (/^#[0-9a-fA-F]{6}$/.test(normalized)) {
-      hexEl.classList.remove('invalid');
-      bgProps[propKey] = normalized;
-      colorEl.value = normalized;
-      bgRedrawPreview();
+      applyColor(normalized);
     } else {
       // Don't fight the user mid-keystroke (e.g. typing "#7c5" is a real
       // in-progress state) - just flag it, apply nothing until it's valid.
       hexEl.classList.add('invalid');
     }
   });
+
+  [rEl, gEl, bEl].forEach((el) => {
+    el.addEventListener('input', () => applyColor(rgbToHex(rEl.value, gEl.value, bEl.value)));
+  });
+
+  if (eyedropperEl) {
+    if (typeof window.EyeDropper !== 'function') {
+      eyedropperEl.disabled = true;
+      eyedropperEl.title = 'Not supported in this browser';
+    } else {
+      eyedropperEl.addEventListener('click', async () => {
+        try {
+          const result = await new window.EyeDropper().open();
+          applyColor(result.sRGBHex);
+        } catch {
+          // User pressed Escape / cancelled the pick - not an error.
+        }
+      });
+    }
+  }
 }
 
 function bgApplyPreset(preset) {
   Object.assign(bgProps, preset);
-  document.getElementById('bgGradientFrom').value = bgProps.gradientFrom;
-  document.getElementById('bgGradientFromHex').value = bgProps.gradientFrom;
-  document.getElementById('bgGradientTo').value = bgProps.gradientTo;
-  document.getElementById('bgGradientToHex').value = bgProps.gradientTo;
-  document.getElementById('bgGradientMid').value = bgProps.gradientMid;
-  document.getElementById('bgGradientMidHex').value = bgProps.gradientMid;
+  bgSetColorFieldValue('bgGradientFrom', 'bgGradientFromHex', bgProps.gradientFrom);
+  bgSetColorFieldValue('bgGradientTo', 'bgGradientToHex', bgProps.gradientTo);
+  bgSetColorFieldValue('bgGradientMid', 'bgGradientMidHex', bgProps.gradientMid);
   document.getElementById('bgGradientMidEnabled').checked = bgProps.gradientMidEnabled;
   document.getElementById('bgGradientStyle').value = bgProps.gradientStyle;
   bgUpdateFieldVisibility();
@@ -3462,14 +3499,10 @@ function openBackgroundGeneratorDialog() {
 
   document.getElementById('bgResolution').value = `${bgProps.canvasWidth}x${bgProps.canvasHeight}`;
   document.getElementById('bgFillType').value = bgProps.fillType;
-  document.getElementById('bgSolidColor').value = bgProps.solidColor;
-  document.getElementById('bgSolidColorHex').value = bgProps.solidColor;
-  document.getElementById('bgGradientFrom').value = bgProps.gradientFrom;
-  document.getElementById('bgGradientFromHex').value = bgProps.gradientFrom;
-  document.getElementById('bgGradientTo').value = bgProps.gradientTo;
-  document.getElementById('bgGradientToHex').value = bgProps.gradientTo;
-  document.getElementById('bgGradientMid').value = bgProps.gradientMid;
-  document.getElementById('bgGradientMidHex').value = bgProps.gradientMid;
+  bgSetColorFieldValue('bgSolidColor', 'bgSolidColorHex', bgProps.solidColor);
+  bgSetColorFieldValue('bgGradientFrom', 'bgGradientFromHex', bgProps.gradientFrom);
+  bgSetColorFieldValue('bgGradientTo', 'bgGradientToHex', bgProps.gradientTo);
+  bgSetColorFieldValue('bgGradientMid', 'bgGradientMidHex', bgProps.gradientMid);
   document.getElementById('bgGradientMidEnabled').checked = bgProps.gradientMidEnabled;
   document.getElementById('bgGradientStyle').value = bgProps.gradientStyle;
   document.getElementById('bgGradientAngle').value = String(bgProps.gradientAngle);
