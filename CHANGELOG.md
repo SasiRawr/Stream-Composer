@@ -4,6 +4,44 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.17.0 — 2026-08-18 (pre-release, pending verification)
+
+Export exactly one item on its own, instead of only the whole canvas at once.
+
+### Added
+- **"Export as its own source…"** — a new button in the Properties panel
+  for whatever item is currently selected. Instead of re-baking the whole
+  project every time you want to add or swap one piece, export just that
+  one item by itself:
+  - A plain image or frame/border exports straight to a real `.png` file
+    — no HTML wrapper — ready to add to OBS directly as an Image Source.
+  - Anything live (Chat + TTS Overlay, PNGTuber, Popup Slide, Countdown
+    Timer, Viewer Pet, Chat Pet Roster, Now Playing) exports as its own
+    small Browser Source, sized to just that item, completely independent
+    of everything else in the project. A `README.txt` is saved alongside
+    it explaining the OBS setup.
+  - The point: a full-scene bake locks every item in it to one shared
+    layer as a single Browser Source — you can't reorder pieces of it
+    against your webcam or game capture individually. Exporting an item
+    on its own gives it its own slot in OBS's source list, so you can
+    freely resize, reposition, and layer it against everything else —
+    and add more pieces later without hunting for the original working
+    folder or re-baking anything that's already in place.
+
+## v1.16.6 — 2026-08-16 (pre-release, pending verification)
+
+Small discoverability fix for an existing feature — no UI changes.
+
+### Added
+- **A `README.txt` inside the `assets/` folder of any baked output that
+  contains at least one image.** Explains that these are the individual,
+  already-edited images used by the scene — each one can be added to OBS
+  directly as its own Image Source, not just via the combined Browser
+  Source. This capability already existed (every image item's current,
+  edited source has always been copied in here); this just makes it
+  discoverable instead of a hidden detail.
+
+
 ## v1.16.5 — 2026-08-16 (pre-release, pending verification)
 
 Two more ways to pick a color in the Background Generator, on every

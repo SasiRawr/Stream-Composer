@@ -743,6 +743,7 @@ function selectItem(itemId) {
   selectedItemId = itemId;
   els.deleteItemBtn.hidden = !itemId;
   if (els.saveToLibraryBtn) els.saveToLibraryBtn.hidden = !itemId;
+  if (els.exportItemBtn) els.exportItemBtn.hidden = !itemId;
   renderPropertiesPanel();
 }
 
@@ -2800,6 +2801,12 @@ function escapeHtml(s) {
 // escape hatch for baking somewhere else instead.
 let lastBakeInfo = null; // { path, width, height } for the "copy instructions" action
 
+const ASSETS_README_TEXT =
+  'These are the individual image files used in this scene (already edited - vignette, ' +
+  'chroma key, etc. if you applied any), each as its own file. scene.html references them ' +
+  'as a single Browser Source, but if you just want one of these images on its own, you can ' +
+  'add any file in this folder directly to OBS as its own Image Source too.\r\n';
+
 async function copyAssetsAndBuildScene(outputFolder, projectOverride) {
   const targetProject = projectOverride || project;
   const assetCopies = collectAssetCopies(targetProject);
@@ -2810,7 +2817,74 @@ async function copyAssetsAndBuildScene(outputFolder, projectOverride) {
     await invoke('write_binary_file', { path: destPath, base64Data: base64 });
     assetPathsById[copy.itemId] = copy.destRelativePath;
   }
+  if (assetCopies.length > 0) {
+    const readmePath = joinPath(outputFolder, `assets${sepFor(outputFolder)}README.txt`);
+    await invoke('write_text_file', { path: readmePath, contents: ASSETS_README_TEXT });
+  }
   return buildSceneHtml(targetProject, assetPathsById);
+}
+
+// ---- EXPORT SINGLE ITEM AS ITS OWN SOURCE ---------------------------------
+// A full bake locks every item on the canvas into ONE combined Browser
+// Source - fine when the whole design ships together, but it means every
+// item shares a single layer position in OBS and any future addition means
+// re-baking (and re-remembering) the whole thing. This exports exactly one
+// item on its own instead: a static item (frame/image - nothing to animate,
+// nothing to connect) goes straight to a real .png via the item's own live
+// Fabric object (toDataURL() renders pixel-for-pixel what the editor already
+// shows, so there's no need to hand-reimplement frame/gradient drawing
+// here). Anything live (chat overlay, PNGTuber, popup-slide, etc.) still
+// needs its own runtime script, so it gets its own tiny scene.html instead -
+// same buildSceneHtml()/collectAssetCopies() pipeline the full bake uses,
+// just scoped to a one-item, one-object "solo" project sized to that item's
+// own box with its position zeroed out (so it lands at 0,0 in its own file
+// instead of wherever it happened to sit on the real canvas).
+function exportItemReadmeText(name, width, height) {
+  return `This folder contains just one piece from your Stream Composer Suite project: "${name}".\r\n\r\n` +
+    `Add ${name}.html to OBS as a Browser Source (check "Local file"), set Width=${width} Height=${height} ` +
+    `to start, then resize and reposition it however you like - it's a fully independent source now.\r\n\r\n` +
+    `Because it's separate from everything else, you control exactly where it sits in your Scene's source ` +
+    `list - above or below your webcam capture, game capture, or any other exported piece. A combined ` +
+    `full-scene bake locks every item in it to a single layer as one Browser Source and can't be reordered ` +
+    `against your other OBS sources piece by piece - export things separately like this whenever you need ` +
+    `that control.\r\n`;
+}
+
+async function exportItemAsSource(itemId) {
+  const item = project && itemId ? project.items.find((i) => i.id === itemId) : null;
+  if (!item) return;
+
+  const outputFolder = await invoke('pick_project_folder');
+  if (!outputFolder) return;
+
+  const isStatic = item.type === 'frame' || item.type === 'image';
+  const safeName = sanitizeSceneName(item.type);
+
+  try {
+    if (isStatic) {
+      const fabricObj = fabricObjectsById.get(item.id);
+      if (!fabricObj) throw new Error('Could not find this item on the canvas.');
+      const dataUrl = fabricObj.toDataURL({ format: 'png' });
+      const base64Data = dataUrl.substring(dataUrl.indexOf(',') + 1);
+      const filePath = joinPath(outputFolder, `${safeName}.png`);
+      await invoke('write_binary_file', { path: filePath, base64Data });
+      setStatus(`Saved ${filePath} — add it to OBS as its own Image Source. It's a plain image now, so position, resize, and layer it however you like.`, 'ok');
+    } else {
+      const soloProject = {
+        canvasWidth: Math.max(1, Math.round(item.width)),
+        canvasHeight: Math.max(1, Math.round(item.height)),
+        items: [{ ...item, x: 0, y: 0, zIndex: 0 }],
+      };
+      const html = await copyAssetsAndBuildScene(outputFolder, soloProject);
+      const htmlPath = joinPath(outputFolder, `${safeName}.html`);
+      await invoke('write_text_file', { path: htmlPath, contents: html });
+      const readmePath = joinPath(outputFolder, 'README.txt');
+      await invoke('write_text_file', { path: readmePath, contents: exportItemReadmeText(safeName, soloProject.canvasWidth, soloProject.canvasHeight) });
+      setStatus(`Saved ${htmlPath} — add it to OBS as its own Browser Source (Width=${soloProject.canvasWidth} Height=${soloProject.canvasHeight} to start). It's independent of every other export, so you can freely resize, reposition, and layer it against your webcam or game capture. See the README.txt saved alongside it.`, 'ok');
+    }
+  } catch (err) {
+    setStatus('Export failed: ' + err, 'err');
+  }
 }
 
 function updateBakeButtonLabels() {
@@ -3636,6 +3710,7 @@ window.addEventListener('DOMContentLoaded', () => {
     propertiesBody: document.getElementById('propertiesBody'),
     deleteItemBtn: document.getElementById('deleteItemBtn'),
     saveToLibraryBtn: document.getElementById('saveToLibraryBtn'),
+    exportItemBtn: document.getElementById('exportItemBtn'),
     libraryList: document.getElementById('libraryList'),
     bakeNewFolderBtn: document.getElementById('bakeNewFolderBtn'),
     bakeResultActions: document.getElementById('bakeResultActions'),
@@ -3680,6 +3755,7 @@ window.addEventListener('DOMContentLoaded', () => {
   els.addNowPlayingBtn.addEventListener('click', () => addItem('now-playing'));
   els.deleteItemBtn.addEventListener('click', deleteSelectedItem);
   els.saveToLibraryBtn.addEventListener('click', saveSelectedItemToLibrary);
+  els.exportItemBtn.addEventListener('click', () => exportItemAsSource(selectedItemId));
   loadLibrary();
 
   document.addEventListener('keydown', (e) => {

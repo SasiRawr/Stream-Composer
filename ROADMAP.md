@@ -1855,3 +1855,50 @@ of video.
 
 Nothing here is scoped or estimated yet. Item 4 is the one worth prototyping early
 even if it ships late, because it is the part that cannot be copied quickly.
+
+---
+
+## Per-item export, image-vs-overlay clarity, and layering — built in v1.17.0 (2026-08-17/18)
+
+Harvey described a real workflow pain point overnight: not remembering where an old
+export lived when he wants to add one more thing to it later, not wanting 50 items
+baked into one giant Browser Source when he only wants two of them live, images baking
+as HTML instead of plain files, and full-scene bakes flattening z-order so a background
+item can't be layered independently against a webcam/game capture in OBS.
+
+**All four turned out to already be solved by the same feature, built the same night**:
+a per-item "Export as its own source…" action (`exportItemAsSource()`, `main.js:2853`),
+shown in the properties panel whenever exactly one item is selected (`main.js:746`,
+next to the existing "Save to Library…" button). Pick any single item on the canvas and
+export *just that one*, independent of the rest of the project:
+
+- **Static items (`frame`, `image`) export straight to a plain `.png`** — one
+  `fabricObj.toDataURL({format: 'png'})` call, no HTML wrapper at all. Solves "images
+  should export as images" directly, for canvas items, not just the Background
+  Generator's own dialog (which already had this — `exportBackgroundNow()`,
+  `main.js:3529` — that one was never the gap).
+- **Everything else (chat overlay, PNGTuber, popup-slide, countdown, viewer-pet, etc.)
+  gets its own tiny, independent `<name>.html`** — built via a "solo" one-item project
+  (`{ items: [{ ...item, x: 0, y: 0, zIndex: 0 }] }`) run through the exact same
+  `buildSceneHtml()`/`collectAssetCopies()` pipeline the full bake already uses, just
+  scoped to one item. Position is zeroed out on purpose — it lands at 0,0 in its own
+  file and gets resized/repositioned freely inside OBS itself, which is also the direct
+  answer to "something a bit easier to resize" from Harvey's message.
+- **A `README.txt` is written alongside every export**, explaining OBS setup and stating
+  outright why this solves layering: *"A combined full-scene bake locks every item in it
+  to a single layer as one Browser Source and can't be reordered against your other OBS
+  sources piece by piece — export things separately like this whenever you need that
+  control"* (`exportItemReadmeText()`, `main.js:2842`).
+- **The "I don't remember where it was" problem dissolves because there's no bundling
+  step to remember**: each item exports as its own small, independently-named,
+  independently-re-exportable file, any time, into any folder. Wanting a third thing a
+  week later means selecting that one item and exporting it — same action, no need to
+  reconstruct a prior combined bake or hunt down which project had which placement.
+  (A more elaborate "named persisted groups" mechanism was considered while scoping this
+  overnight, but turned out unnecessary — OBS already handles "multiple independent
+  sources in one scene" natively; there's no real gap left for a grouping layer to fill.)
+
+Verified via Playwright interactive testing (see the v1.17.0 test notes) that the button
+shows/hides correctly with single-selection and the export path runs without throwing;
+**not yet verified by Harvey clicking real output into OBS** — same standing rule as
+every other export/bake feature in this project.
