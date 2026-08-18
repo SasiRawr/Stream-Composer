@@ -1731,16 +1731,20 @@ pattern as every other v1.x.0 addition in this series.
   Twitch does not support PKCE on Authorization Code): the user types a
   short code into a page on twitch.tv they open themselves, nothing is
   ever typed into an embedded/owned webview. See `twitch-oauth.js`.
-- **Real gap, needs Harvey specifically**: `TWITCH_ALERTS_CLIENT_ID` in
-  `twitch-oauth.js` is empty. Every Twitch API call needs a Client ID from
-  a registered Twitch application — only a human with a real Twitch
-  account can create one, at dev.twitch.tv/console. The Client ID itself
-  is meant to be public/baked into the app (no client secret is involved
-  in Device Code or its refresh step) — same "developer registers one app,
-  every install shares it" pattern as basically every desktop Twitch tool.
-  Until this is filled in, the "Connect Twitch Account…" button is
-  correctly disabled with an explanation — everything else (rule setup,
-  media/sound file pickers) already works.
+- **Client ID gap closed same night, in v1.18.1.** Harvey registered a
+  real Twitch application at dev.twitch.tv/console (OAuth Redirect URL
+  set to `http://localhost:3000` — required by the console to save the
+  registration, never actually used since Device Code Flow has no
+  redirect step) and provided the Client ID, now baked into
+  `TWITCH_ALERTS_CLIENT_ID` in `twitch-oauth.js`. "Connect Twitch
+  Account…" is no longer disabled. **Verified against the real, live
+  Twitch API before shipping** — a real device-code request was made
+  with the real Client ID and Twitch returned a genuine device code,
+  user code, and verification URL, so the connection itself is now
+  confirmed working, not just "should work per the docs." What's still
+  unverified is the human half: nobody has actually typed a code in and
+  approved it, or seen a real Follow/Subscribe/Cheer/Raid trigger a real
+  alert — that's Harvey's testing pass to do.
 - **Minimize to tray** (Harvey's other explicit ask, same message) also
   shipped — Tauri v2's first-party `tauri::tray` API, close-to-hide instead
   of quit. Turned out to be a nice-to-have rather than a hard requirement

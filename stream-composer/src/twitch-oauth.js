@@ -31,10 +31,15 @@
 // itself is meant to be public/embedded (no client secret is involved in
 // either Device Code or its refresh step), so baking it into the app once
 // registered is the normal, expected pattern - this is exactly how
-// basically every desktop Twitch tool works. Until Harvey provides a real
-// one, this whole feature is wired up and testable end-to-end EXCEPT the
-// final "does Twitch actually accept it" step.
-export const TWITCH_ALERTS_CLIENT_ID = ''; // <-- Harvey: paste your Client ID from dev.twitch.tv/console here
+// basically every desktop Twitch tool works.
+//
+// Real value, registered by Harvey at dev.twitch.tv/console 2026-08-18.
+// Client IDs are meant to be public/embeddable (no client secret is
+// involved in either Device Code or its refresh step) - safe to commit.
+// The app's OAuth Redirect URL is set to http://localhost:3000, required
+// by Twitch's console to save the registration but never actually used -
+// Device Code Flow has no redirect step at all.
+export const TWITCH_ALERTS_CLIENT_ID = 'f7kqsyp0bzrnk77szzetoh8zsz0j3q';
 
 // One scope per alert type this app supports. `channel.raid` needs no
 // scope at all (a public event) - not listed here on purpose.

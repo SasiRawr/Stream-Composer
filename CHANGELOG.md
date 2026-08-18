@@ -4,6 +4,20 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.18.1 — 2026-08-18 (pre-release, pending verification)
+
+Twitch Alerts actually works now — the missing piece from v1.18.0.
+
+### Fixed
+- **A real Twitch application is now registered and its Client ID is
+  baked in.** "Connect Twitch Account…" is no longer disabled — sign
+  in for real and Twitch Alerts is fully live. Confirmed against
+  Twitch's real API before shipping: a live device-code request was
+  made and Twitch returned a real code and verification link, so this
+  isn't just "should work per the docs" anymore — the connection to
+  Twitch itself is proven, up to the point a human needs to actually
+  type the code in and approve it.
+
 ## v1.18.0 — 2026-08-18 (pre-release, pending verification)
 
 On-device Twitch alerts — a free, local alternative to StreamElements/
