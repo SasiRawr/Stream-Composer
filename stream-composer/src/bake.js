@@ -21,6 +21,7 @@ import { buildPngtuberScript } from './pngtuber-engine.js';
 import { buildViewerPetScript } from './viewer-pet-engine.js';
 import { buildPetRosterScript } from './pet-roster-engine.js';
 import { buildNowPlayingScript } from './now-playing-engine.js';
+import { buildTwitchAlertsScript } from './twitch-alerts-engine.js';
 
 // Escapes text for safe use inside an HTML attribute or text node.
 function escapeHtml(s) {
@@ -487,6 +488,59 @@ function renderNowPlayingItem(item, instanceId) {
   return { html, script };
 }
 
+// ---- TWITCH ALERTS ------------------------------------------------------
+// A hidden-by-default box that shows a rule's media (image or video) plus
+// a caption and plays its sound whenever a matching EventSub notification
+// arrives — see twitch-alerts-engine.js for the actual connection/queue
+// logic. assetPathsById resolves each rule's own copied media/sound files
+// (see collectAssetCopies below for the compound key shape).
+const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'mov', 'm4v']);
+function mediaKindForPath(path) {
+  const ext = (path.split('.').pop() || '').toLowerCase();
+  return VIDEO_EXTENSIONS.has(ext) ? 'video' : 'image';
+}
+
+function renderTwitchAlertsItem(item, instanceId, assetPathsById) {
+  const p = item.props;
+  const resolvedRules = (p.rules || [])
+    .filter((r) => r.enabled && r.eventType)
+    .map((r, i) => {
+      const mediaAssetPath = assetPathsById[`${item.id}::rule${i}media`] || '';
+      const soundAssetPath = assetPathsById[`${item.id}::rule${i}sound`] || '';
+      return {
+        eventType: r.eventType,
+        mediaPath: mediaAssetPath,
+        mediaKind: mediaAssetPath ? mediaKindForPath(mediaAssetPath) : 'image',
+        soundPath: soundAssetPath,
+        durationMs: r.durationMs || 6000,
+      };
+    });
+
+  const html = `
+<div class="item item-twitch-alerts" style="${wrapperStyle(item)}">
+  <style>
+    #${instanceId}-box {
+      display: none; width: 100%; height: 100%; flex-direction: column; align-items: center;
+      justify-content: center; gap: 8px; font-family: 'Inter', sans-serif;
+    }
+    #${instanceId}-media, #${instanceId}-video { max-width: 100%; max-height: 80%; object-fit: contain; }
+    #${instanceId}-label {
+      font-size: 15px; font-weight: 700; color: #f2f1f9; text-align: center;
+      background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 12px;
+    }
+  </style>
+  <div id="${instanceId}-box">
+    <img id="${instanceId}-media" src="" alt="" style="display:none;">
+    <video id="${instanceId}-video" style="display:none;"></video>
+    <div id="${instanceId}-label"></div>
+  </div>
+  <audio id="${instanceId}-audio"></audio>
+</div>`;
+
+  const script = buildTwitchAlertsScript(instanceId, p, resolvedRules);
+  return { html, script };
+}
+
 // ---- ASSET COLLECTION -------------------------------------------------
 // Every `image` item needs its source file copied into the output's
 // assets/ folder, and so does every popup-slide item's slide that uses a
@@ -556,6 +610,30 @@ export function collectAssetCopies(project) {
         });
       }
     }
+    if (item.type === 'twitch-alerts') {
+      // Every rule slot's media/sound gets collected whenever a path is set,
+      // regardless of whether that rule is CURRENTLY enabled - same reasoning
+      // pngtuber's asset collection above follows, so toggling a rule off and
+      // back on later never loses an already-picked file.
+      (item.props.rules || []).forEach((rule, i) => {
+        if (rule.mediaPath) {
+          const ext = (rule.mediaPath.split('.').pop() || 'png').toLowerCase();
+          copies.push({
+            itemId: `${item.id}::rule${i}media`,
+            sourcePath: rule.mediaPath,
+            destRelativePath: `assets/${item.id}-rule${i}-media.${ext}`,
+          });
+        }
+        if (rule.soundPath) {
+          const ext = (rule.soundPath.split('.').pop() || 'mp3').toLowerCase();
+          copies.push({
+            itemId: `${item.id}::rule${i}sound`,
+            sourcePath: rule.soundPath,
+            destRelativePath: `assets/${item.id}-rule${i}-sound.${ext}`,
+          });
+        }
+      });
+    }
   }
   return copies;
 }
@@ -592,6 +670,7 @@ export function buildSceneHtml(project, assetPathsById) {
     if (item.type === 'viewer-pet') return renderViewerPetItem(item, `pet-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     if (item.type === 'pet-roster') return renderPetRosterItem(item, `roster-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     if (item.type === 'now-playing') return renderNowPlayingItem(item, `nowplaying-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`);
+    if (item.type === 'twitch-alerts') return renderTwitchAlertsItem(item, `twitchalerts-${item.id.replace(/[^a-zA-Z0-9]/g, '')}-${index}`, assetPathsById);
     return { html: '', script: '' };
   });
 

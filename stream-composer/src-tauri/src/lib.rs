@@ -13,6 +13,8 @@ use base64::Engine;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
@@ -37,6 +39,21 @@ fn pick_image_file(app: tauri::AppHandle) -> Option<String> {
     app.dialog()
         .file()
         .add_filter("Images", &["png", "jpg", "jpeg", "gif", "webp", "svg"])
+        .blocking_pick_file()
+        .and_then(|file_path| file_path.into_path().ok())
+        .map(|path_buf| path_buf.to_string_lossy().to_string())
+}
+
+/// Opens a "choose a file" dialog filtered to whatever extensions the
+/// caller asks for — used for Twitch Alerts' media (image or video) and
+/// sound file pickers, where the fixed extension list pick_image_file
+/// hardcodes doesn't fit either case.
+#[tauri::command]
+fn pick_media_file(app: tauri::AppHandle, extensions: Vec<String>) -> Option<String> {
+    let ext_refs: Vec<&str> = extensions.iter().map(|s| s.as_str()).collect();
+    app.dialog()
+        .file()
+        .add_filter("Media", &ext_refs)
         .blocking_pick_file()
         .and_then(|file_path| file_path.into_path().ok())
         .map(|path_buf| path_buf.to_string_lossy().to_string())
@@ -1265,11 +1282,58 @@ pub fn run() {
         .setup(|app| {
             now_playing_server_thread();
             obs_volume_meter_server_thread(app.handle().clone());
+
+            // Minimize-to-tray - built for Twitch Alerts, whose whole point
+            // (see twitch-alerts-engine.js) is that alerts actually run
+            // inside OBS's own Browser Source, not this window. This tray
+            // exists for the case that IS still true: previewing/testing
+            // alert rules, or just keeping the app out of the taskbar,
+            // without needing OBS open at all. Closing the window hides it
+            // instead of quitting - see the on_window_event handler below.
+            let show_item = MenuItem::with_id(app, "show", "Show Stream Composer Suite", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Stream Composer Suite")
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             pick_project_folder,
             pick_image_file,
+            pick_media_file,
             read_text_file,
             write_text_file,
             read_binary_file_base64,

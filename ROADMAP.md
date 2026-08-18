@@ -1709,6 +1709,56 @@ Once the v1.x modules above exist independently, merge them together —
 the next "everything becomes one" moment, this time centered on chat,
 alerts, and TTS as the headline capability.
 
+**A first pass on alerts shipped early, in v1.18.0 (2026-08-18)** — pulled
+forward out of turn, at Harvey's own explicit call overnight ("since we got
+a good version of TTS working on device, I feel like this would be
+obligatory at this point"). A `twitch-alerts` canvas item connects directly
+to Twitch's real EventSub-over-WebSocket feed (`wss://eventsub.wss.twitch.tv/ws`)
+and plays a per-event (Follow/Subscribe/Cheer/Raid) local image/video +
+sound file the streamer supplies — same "runs inside OBS's own Browser
+Source, no backend, no separate app needing to stay open" architecture Chat
++ TTS Overlay already proved out, which turned out to make this simpler
+than first assumed: the app itself never needs to keep running to
+"monitor" anything, since the connection lives in the baked scene, not the
+editor. This does NOT retire the eventual v2.0.0 merge — it's the same
+headline feature, just the first module of it built standalone, same
+pattern as every other v1.x.0 addition in this series.
+
+- **Real, not anonymous, auth** — this is the first feature in the app
+  needing an actual broadcaster OAuth token (Chat + TTS Overlay's Twitch/
+  Kick connections are anonymous). Uses Twitch's Device Code flow
+  (confirmed via Twitch's own docs to be the intended no-backend option —
+  Twitch does not support PKCE on Authorization Code): the user types a
+  short code into a page on twitch.tv they open themselves, nothing is
+  ever typed into an embedded/owned webview. See `twitch-oauth.js`.
+- **Real gap, needs Harvey specifically**: `TWITCH_ALERTS_CLIENT_ID` in
+  `twitch-oauth.js` is empty. Every Twitch API call needs a Client ID from
+  a registered Twitch application — only a human with a real Twitch
+  account can create one, at dev.twitch.tv/console. The Client ID itself
+  is meant to be public/baked into the app (no client secret is involved
+  in Device Code or its refresh step) — same "developer registers one app,
+  every install shares it" pattern as basically every desktop Twitch tool.
+  Until this is filled in, the "Connect Twitch Account…" button is
+  correctly disabled with an explanation — everything else (rule setup,
+  media/sound file pickers) already works.
+- **Minimize to tray** (Harvey's other explicit ask, same message) also
+  shipped — Tauri v2's first-party `tauri::tray` API, close-to-hide instead
+  of quit. Turned out to be a nice-to-have rather than a hard requirement
+  once the "runs inside OBS" architecture was chosen (alerts fire whether
+  or not this window is even open), but useful on its own for previewing
+  rules or just keeping the app out of the taskbar.
+- **Verification honesty, same standing rule as every live-connection
+  feature**: the EventSub message handling (session_welcome/keepalive/
+  notification/reconnect/revocation) matches Twitch's documented protocol
+  shape and the pure parsing/mapping logic is Node-tested
+  (`twitch-alerts-parsing.test.mjs`), but the actual live connection has
+  not been tested against a real Twitch channel and a real follow/sub/
+  cheer/raid — more so than usual, since nobody has a real Client ID to
+  even attempt it with yet. Kick was researched and ruled out for this
+  pass: its official events API is webhook-only, no direct-client
+  WebSocket equivalent exists, which doesn't fit this app's no-backend
+  rule without standing up a relay server.
+
 - **Self-hosted / runs locally first** — the whole point is nobody pays
   for a "pro plan" to get real alert/TTS functionality. This is the
   north star, not a fallback tier.

@@ -35,6 +35,10 @@ import {
 import { defaultBackgroundProps, drawBackground, THENERDYBOX_PRESET, hexToRgb, rgbToHex } from './background-generator.js';
 import { defaultPollyProps, POLLY_VOICE_SUGGESTIONS } from './polly-tts.js';
 import { computeCalibratedThreshold } from './pngtuber-engine.js';
+import {
+  TWITCH_ALERTS_CLIENT_ID,
+  startTwitchDeviceAuth, pollTwitchDeviceToken, resolveOwnTwitchUser,
+} from './twitch-oauth.js';
 
 const { invoke } = window.__TAURI__.core;
 
@@ -208,6 +212,22 @@ function defaultPropsFor(type) {
       appFilter: 'Spotify', // which app's media session to show — Windows tracks many at once (a paused browser tab counts too), so this pins it to a specific one instead of trusting Windows' single "current" guess
     };
   }
+  if (type === 'twitch-alerts') {
+    return {
+      clientId: TWITCH_ALERTS_CLIENT_ID,
+      accessToken: '',
+      refreshToken: '',
+      tokenExpiresAt: 0,
+      broadcasterLogin: '', // the streamer's own Twitch username — resolved to broadcasterUserId once, at connect time
+      broadcasterUserId: '',
+      rules: [
+        { eventType: 'follow', enabled: false, mediaPath: '', soundPath: '', durationMs: 6000 },
+        { eventType: 'subscribe', enabled: false, mediaPath: '', soundPath: '', durationMs: 6000 },
+        { eventType: 'cheer', enabled: false, mediaPath: '', soundPath: '', durationMs: 6000 },
+        { eventType: 'raid', enabled: false, mediaPath: '', soundPath: '', durationMs: 6000 },
+      ],
+    };
+  }
   return {};
 }
 
@@ -220,6 +240,7 @@ function defaultSizeFor(type) {
   if (type === 'viewer-pet') return { width: 180, height: 180 };  // smaller than pngtuber — a corner critter, not a main character
   if (type === 'pet-roster') return { width: 500, height: 220 };  // wide, flat strip — room for several pets to wander side to side
   if (type === 'now-playing') return { width: 340, height: 100 }; // a flat "now playing" card
+  if (type === 'twitch-alerts') return { width: 480, height: 270 }; // room for a real alert image/video + caption
   return { width: 300, height: 300 };
 }
 
@@ -479,6 +500,7 @@ const PLACEHOLDER_ACCENTS = {
   'viewer-pet': '#7cffb4',
   'pet-roster': '#5ec8ff',
   'now-playing': '#a8e05f',
+  'twitch-alerts': '#9146ff',
 };
 
 function createRectFabricObject(item) {
@@ -768,6 +790,7 @@ function renderPropertiesPanel() {
   if (item.type === 'viewer-pet') return renderViewerPetProperties(item, body);
   if (item.type === 'pet-roster') return renderPetRosterProperties(item, body);
   if (item.type === 'now-playing') return renderNowPlayingProperties(item, body);
+  if (item.type === 'twitch-alerts') return renderTwitchAlertsProperties(item, body);
 }
 
 function renderFrameProperties(item, body) {
@@ -2789,6 +2812,129 @@ function renderNowPlayingProperties(item, body) {
   ['pf-npAppFilter', 'pf-npRefresh', 'pf-npShowAlbum'].forEach((id) => document.getElementById(id).addEventListener('input', applyGeneral));
 }
 
+const TWITCH_ALERT_EVENT_LABELS = { follow: 'Follow', subscribe: 'Subscribe', cheer: 'Cheer (bits)', raid: 'Raid' };
+
+function fileNameOnly(path) {
+  return (path || '').split(/[\\/]/).pop();
+}
+
+function renderTwitchAlertsProperties(item, body) {
+  const p = item.props;
+  if (!p.rules) p.rules = defaultPropsFor('twitch-alerts').rules; // tolerate a project saved before this feature existed
+  const clientIdMissing = !TWITCH_ALERTS_CLIENT_ID;
+  const connected = !!(p.accessToken && p.broadcasterLogin);
+
+  body.innerHTML = `
+    ${clientIdMissing ? '<div class="hint">This build has no Twitch app Client ID configured yet, so connecting a real account will not work until one is added — rules can still be set up in the meantime.</div>' : ''}
+    <div class="field">
+      <label>Twitch account</label>
+      <div id="ta-connect-status">${connected ? `Connected as <strong>${escapeHtml(p.broadcasterLogin)}</strong>` : 'Not connected'}</div>
+      <button class="secondary block" id="ta-connect-btn" type="button" ${clientIdMissing ? 'disabled' : ''}>${connected ? 'Reconnect Twitch Account…' : 'Connect Twitch Account…'}</button>
+      <div id="ta-connect-progress" class="hint" hidden></div>
+    </div>
+    <div class="field"><label>Alerts</label></div>
+    <div id="ta-rules"></div>
+  `;
+
+  const rulesHost = document.getElementById('ta-rules');
+  function renderRules() {
+    rulesHost.innerHTML = p.rules.map((rule, i) => `
+      <div class="rule-card" style="border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:10px; margin-bottom:8px;">
+        <label><input type="checkbox" data-rule-idx="${i}" data-rule-field="enabled" ${rule.enabled ? 'checked' : ''}> <strong>${TWITCH_ALERT_EVENT_LABELS[rule.eventType]}</strong></label>
+        <div class="field">
+          <label>Media (image or video)</label>
+          <button class="secondary" data-rule-idx="${i}" data-rule-action="pickMedia" type="button">${rule.mediaPath ? 'Change…' : 'Choose…'}</button>
+          ${rule.mediaPath ? `<span class="hint">${escapeHtml(fileNameOnly(rule.mediaPath))}</span> <button class="secondary" data-rule-idx="${i}" data-rule-action="clearMedia" type="button">Clear</button>` : ''}
+        </div>
+        <div class="field">
+          <label>Sound (optional)</label>
+          <button class="secondary" data-rule-idx="${i}" data-rule-action="pickSound" type="button">${rule.soundPath ? 'Change…' : 'Choose…'}</button>
+          ${rule.soundPath ? `<span class="hint">${escapeHtml(fileNameOnly(rule.soundPath))}</span> <button class="secondary" data-rule-idx="${i}" data-rule-action="clearSound" type="button">Clear</button>` : ''}
+        </div>
+        <div class="field"><label>Show for (seconds)</label><input type="number" min="1" step="0.5" data-rule-idx="${i}" data-rule-field="durationSeconds" value="${(rule.durationMs / 1000).toFixed(1)}"></div>
+      </div>
+    `).join('');
+
+    rulesHost.querySelectorAll('[data-rule-field="enabled"]').forEach((el) => el.addEventListener('change', (e) => {
+      p.rules[+e.target.dataset.ruleIdx].enabled = e.target.checked;
+    }));
+    rulesHost.querySelectorAll('[data-rule-field="durationSeconds"]').forEach((el) => el.addEventListener('input', (e) => {
+      p.rules[+e.target.dataset.ruleIdx].durationMs = Math.round((parseFloat(e.target.value) || 6) * 1000);
+    }));
+    rulesHost.querySelectorAll('[data-rule-action="pickMedia"]').forEach((el) => el.addEventListener('click', async (e) => {
+      const idx = +e.target.dataset.ruleIdx;
+      const path = await invoke('pick_media_file', { extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'webm', 'mov', 'm4v'] });
+      if (path) { p.rules[idx].mediaPath = path; renderRules(); }
+    }));
+    rulesHost.querySelectorAll('[data-rule-action="clearMedia"]').forEach((el) => el.addEventListener('click', (e) => {
+      p.rules[+e.target.dataset.ruleIdx].mediaPath = '';
+      renderRules();
+    }));
+    rulesHost.querySelectorAll('[data-rule-action="pickSound"]').forEach((el) => el.addEventListener('click', async (e) => {
+      const idx = +e.target.dataset.ruleIdx;
+      const path = await invoke('pick_media_file', { extensions: ['mp3', 'wav', 'ogg', 'm4a'] });
+      if (path) { p.rules[idx].soundPath = path; renderRules(); }
+    }));
+    rulesHost.querySelectorAll('[data-rule-action="clearSound"]').forEach((el) => el.addEventListener('click', (e) => {
+      p.rules[+e.target.dataset.ruleIdx].soundPath = '';
+      renderRules();
+    }));
+  }
+  renderRules();
+
+  document.getElementById('ta-connect-btn').addEventListener('click', () => startTwitchAlertsConnect(item));
+}
+
+// Runs Twitch's device-code flow end to end: request a code, show it to the
+// user, poll until they've authorized in their own browser, then resolve
+// and store the connected account's own id/login (no separate "type your
+// username" step needed - see resolveOwnTwitchUser's own comment for why).
+async function startTwitchAlertsConnect(item) {
+  const p = item.props;
+  const btn = document.getElementById('ta-connect-btn');
+  const statusEl = document.getElementById('ta-connect-status');
+  const progressEl = document.getElementById('ta-connect-progress');
+  if (!btn || !statusEl || !progressEl) return; // panel was closed/re-rendered mid-flow
+
+  btn.disabled = true;
+  progressEl.hidden = false;
+  progressEl.textContent = 'Requesting a code from Twitch…';
+  try {
+    const device = await startTwitchDeviceAuth(TWITCH_ALERTS_CLIENT_ID);
+    progressEl.innerHTML = `Go to <strong>${escapeHtml(device.verification_uri)}</strong> and enter code <strong>${escapeHtml(device.user_code)}</strong>. Waiting for you to finish…`;
+
+    const deadline = Date.now() + (device.expires_in || 600) * 1000;
+    const intervalMs = (device.interval || 5) * 1000;
+    let tokens = null;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      const result = await pollTwitchDeviceToken(TWITCH_ALERTS_CLIENT_ID, device.device_code);
+      if (result.done) { tokens = result.tokens; break; }
+    }
+    if (!tokens) throw new Error('That code expired before it was used — try again.');
+
+    p.accessToken = tokens.access_token;
+    p.refreshToken = tokens.refresh_token || '';
+    p.tokenExpiresAt = Date.now() + (tokens.expires_in || 0) * 1000;
+
+    progressEl.textContent = 'Confirming your channel…';
+    const me = await resolveOwnTwitchUser(TWITCH_ALERTS_CLIENT_ID, p.accessToken);
+    if (!me) throw new Error('Connected, but could not read your Twitch account back.');
+    p.broadcasterLogin = me.login;
+    p.broadcasterUserId = me.id;
+
+    progressEl.hidden = true;
+    statusEl.innerHTML = `Connected as <strong>${escapeHtml(p.broadcasterLogin)}</strong>`;
+    setStatus('Twitch account connected — alerts will use this account once baked.', 'ok');
+  } catch (err) {
+    progressEl.hidden = true;
+    setStatus('Twitch connect failed: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = p.accessToken ? 'Reconnect Twitch Account…' : 'Connect Twitch Account…';
+  }
+}
+
 function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -3705,6 +3851,7 @@ window.addEventListener('DOMContentLoaded', () => {
     addViewerPetBtn: document.getElementById('addViewerPetBtn'),
     addPetRosterBtn: document.getElementById('addPetRosterBtn'),
     addNowPlayingBtn: document.getElementById('addNowPlayingBtn'),
+    addTwitchAlertsBtn: document.getElementById('addTwitchAlertsBtn'),
     canvasSizeLabel: document.getElementById('canvasSizeLabel'),
     fabricCanvasEl: document.getElementById('fabricCanvas'),
     propertiesBody: document.getElementById('propertiesBody'),
@@ -3753,6 +3900,7 @@ window.addEventListener('DOMContentLoaded', () => {
   els.addViewerPetBtn.addEventListener('click', () => addItem('viewer-pet'));
   els.addPetRosterBtn.addEventListener('click', () => addItem('pet-roster'));
   els.addNowPlayingBtn.addEventListener('click', () => addItem('now-playing'));
+  els.addTwitchAlertsBtn.addEventListener('click', () => addItem('twitch-alerts'));
   els.deleteItemBtn.addEventListener('click', deleteSelectedItem);
   els.saveToLibraryBtn.addEventListener('click', saveSelectedItemToLibrary);
   els.exportItemBtn.addEventListener('click', () => exportItemAsSource(selectedItemId));

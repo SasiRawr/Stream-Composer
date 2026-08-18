@@ -4,6 +4,38 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.18.0 — 2026-08-18 (pre-release, pending verification)
+
+On-device Twitch alerts — a free, local alternative to StreamElements/
+Streamlabs cloud alert boxes — plus a minimize-to-tray option.
+
+### Added
+- **Twitch Alerts item.** A new canvas item type: configure a rule per
+  event (Follow, Subscribe, Cheer, Raid) with your own image or video
+  file, an optional sound file, and how long it stays on screen. When
+  baked, it connects directly to Twitch's real-time event feed and
+  plays your files locally the moment a real event happens — runs
+  entirely inside OBS's Browser Source, no separate app needs to stay
+  open once it's added to your scene.
+- **"Connect Twitch Account…"** in the item's Properties panel — a
+  short code-based sign-in (type a code into a page on twitch.tv you
+  open yourself; nothing ever asks for your password inside this app).
+- **Minimize to tray.** Closing the window now hides it to the system
+  tray instead of quitting — right-click the tray icon for Show/Quit.
+  Useful for previewing alert rules or just keeping the app out of the
+  taskbar; not required for alerts themselves, which run inside OBS
+  regardless of whether this window is open.
+
+### Known gap
+- This build has no Twitch application registered yet, so "Connect
+  Twitch Account…" is disabled until one is added — everything else
+  (rule setup, media/sound pickers) works today. Registering an app
+  is a one-time, developer-side step; once done, every install of
+  this app can connect real Twitch accounts with no further setup.
+- Kick has no equivalent free, no-backend alerts API today (its
+  official events API is webhook-only, which would need a hosted
+  server this project doesn't run) — Twitch only for now.
+
 ## v1.17.0 — 2026-08-18 (pre-release, pending verification)
 
 Export exactly one item on its own, instead of only the whole canvas at once.

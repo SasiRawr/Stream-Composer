@@ -290,6 +290,49 @@ assert(nowPlayingHtml.includes('opacity: 0'), 'starts hidden until the inlined s
 assert(nowPlayingHtml.includes('REFRESH_MS = 2500'), 'the configured refresh interval reaches the inlined script');
 assert(nowPlayingHtml.includes('127.0.0.1:5759'), "the now-playing item's script polls the local now-playing server");
 
+// ---- buildSceneHtml: twitch-alerts item ----
+const alertsProject = baseProject([{
+  id: 'ta1', type: 'twitch-alerts', x: 0, y: 0, width: 480, height: 270, rotation: 0, zIndex: 0,
+  props: {
+    clientId: 'client-1', accessToken: 'token-1', refreshToken: 'refresh-1', tokenExpiresAt: 9999999999999, broadcasterUserId: 'U1',
+    rules: [
+      { eventType: 'follow', enabled: true, mediaPath: '/fake/follow.png', soundPath: '/fake/follow.mp3', durationMs: 5000 },
+      { eventType: 'raid', enabled: false, mediaPath: '/fake/raid.mp4', soundPath: '', durationMs: 8000 },
+      { eventType: 'cheer', enabled: true, mediaPath: '', soundPath: '/fake/cheer.mp3', durationMs: 4000 },
+    ],
+  },
+}]);
+const alertsCopies = collectAssetCopies(alertsProject);
+// Same reasoning as pngtuber's asset collection: every rule with a real file
+// path set gets copied regardless of whether it's CURRENTLY enabled, so
+// re-enabling a rule later doesn't lose an already-picked file.
+assert(alertsCopies.length === 4, `every rule slot with a real file path produces a copy, enabled or not (got ${alertsCopies.length})`);
+assert(alertsCopies.some((c) => c.itemId === 'ta1::rule0media' && c.destRelativePath === 'assets/ta1-rule0-media.png'), "a rule's media file gets a compound-keyed copy entry");
+assert(alertsCopies.some((c) => c.itemId === 'ta1::rule0sound'), "a rule's sound file gets its own compound-keyed copy entry");
+assert(alertsCopies.some((c) => c.itemId === 'ta1::rule1media'), 'a currently-disabled rule (raid) still gets its file copied, so re-enabling it later keeps working');
+
+const alertsAssetPaths = {
+  'ta1::rule0media': 'assets/ta1-rule0-media.png',
+  'ta1::rule0sound': 'assets/ta1-rule0-sound.mp3',
+  'ta1::rule2sound': 'assets/ta1-rule2-sound.mp3',
+};
+const alertsHtml = buildSceneHtml(alertsProject, alertsAssetPaths);
+assert(alertsHtml.includes('item-twitch-alerts'), 'the twitch-alerts item is rendered');
+assert(alertsHtml.includes('twitchalerts-ta1-0-box') && alertsHtml.includes('twitchalerts-ta1-0-audio'), 'the twitch-alerts item uses instance-scoped element ids');
+assert(alertsHtml.includes('display: none'), 'the alert box starts hidden, only shown when a real event fires');
+assert(alertsHtml.includes('assets/ta1-rule0-media.png'), "an enabled rule's baked media asset path reaches the inlined script");
+assert(alertsHtml.includes('"eventType":"follow"'), 'the enabled follow rule reaches the inlined script');
+assert(!alertsHtml.includes('"eventType":"raid"'), 'the disabled raid rule is excluded from the inlined script entirely');
+assert(alertsHtml.includes('eventsub.wss.twitch.tv'), "the twitch-alerts item's EventSub connection script is inlined");
+
+const alertsNoRulesProject = baseProject([{
+  id: 'ta2', type: 'twitch-alerts', x: 0, y: 0, width: 480, height: 270, rotation: 0, zIndex: 0,
+  props: { clientId: '', accessToken: '', refreshToken: '', tokenExpiresAt: 0, broadcasterUserId: '', rules: [] },
+}]);
+assert(collectAssetCopies(alertsNoRulesProject).length === 0, 'a twitch-alerts item with no rules configured yet produces no asset copies (not a crash)');
+const alertsNoRulesHtml = buildSceneHtml(alertsNoRulesProject, {});
+assert(alertsNoRulesHtml.includes('item-twitch-alerts'), 'an unconfigured twitch-alerts item still renders its (inert) box, rather than being skipped');
+
 // ---- buildSceneHtml: items sort by zIndex regardless of array order ----
 const outOfOrder = baseProject([
   { id: 'top', type: 'frame', x: 0, y: 0, width: 10, height: 10, rotation: 0, zIndex: 5,
