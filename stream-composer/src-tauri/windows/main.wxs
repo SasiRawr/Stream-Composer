@@ -89,13 +89,13 @@
 
         <UI>
             <!-- launch app checkbox -->
-            <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
+            <Publish Dialog="TnbExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
 
             <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
 
             {{#unless license}}
             <!-- Skip license dialog -->
-            <Publish Dialog="WelcomeDlg"
+            <Publish Dialog="TnbWelcomeDlg"
                      Control="Next"
                      Event="NewDialog"
                      Value="InstallDirDlg"
@@ -103,12 +103,131 @@
             <Publish Dialog="InstallDirDlg"
                      Control="Back"
                      Event="NewDialog"
-                     Value="WelcomeDlg"
+                     Value="TnbWelcomeDlg"
                      Order="2">1</Publish>
             {{/unless}}
         </UI>
 
-        <UIRef Id="WixUI_InstallDir" />
+        <!-- Not using <UIRef Id="WixUI_InstallDir" /> - inlined instead, verbatim
+             from WiX's own WixUI_InstallDir.wxs (same Property/DialogRef/Publish
+             entries, unchanged), EXCEPT WelcomeDlg and ExitDialog are given as
+             real Dialog definitions right here instead of coming from the
+             WixUIExtension library. Reason: those two show wix-dialog.bmp
+             full-size (see WixUIDialogBmp above) - our branded dark background,
+             not the stock light one WixUI_InstallDir assumes - and their Title/
+             Description Controls have no explicit text color, defaulting to
+             black, invisible against a dark background. WiX's linker treats two
+             Fragments defining the same Dialog Id as a hard error (LGHT0091 -
+             confirmed by actually hitting it), so simply adding a second
+             WelcomeDlg/ExitDialog alongside <UIRef Id="WixUI_InstallDir" />
+             doesn't work; the library's copy of just those two has to never be
+             pulled in at all, which means not referencing the wrapper that
+             would pull them in. Every OTHER dialog here (InstallDirDlg,
+             VerifyReadyDlg, ProgressDlg, ...) still resolves from the library
+             the same implicit way WixUI_InstallDir.wxs itself relies on (no
+             DialogRef for those either in the original - the Publish/Show
+             entries below are what pull them in) - only shows the small
+             WixUIBannerBmp strip, which is plain white, so their default black
+             text was never actually a problem. -->
+        <UI Id="TnbInstallDirUI">
+            <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+            <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+            <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+            <TextStyle Id="TnbLightTitle" FaceName="Tahoma" Size="9" Bold="yes" Red="242" Green="241" Blue="249" />
+            <TextStyle Id="TnbLightBody" FaceName="Tahoma" Size="8" Red="214" Green="212" Blue="232" />
+
+            <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+            <Property Id="WixUI_Mode" Value="InstallDir" />
+
+            <DialogRef Id="BrowseDlg" />
+            <DialogRef Id="DiskCostDlg" />
+            <DialogRef Id="ErrorDlg" />
+            <DialogRef Id="FatalError" />
+            <DialogRef Id="FilesInUse" />
+            <DialogRef Id="MsiRMFilesInUse" />
+            <DialogRef Id="PrepareDlg" />
+            <DialogRef Id="ProgressDlg" />
+            <DialogRef Id="ResumeDlg" />
+            <DialogRef Id="UserExit" />
+
+            <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
+            <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+
+            <Publish Dialog="TnbExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+
+            <Publish Dialog="TnbWelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg">NOT Installed</Publish>
+            <Publish Dialog="TnbWelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+
+            <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="TnbWelcomeDlg">1</Publish>
+            <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">LicenseAccepted = "1"</Publish>
+
+            <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg">1</Publish>
+            <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+            <Publish Dialog="InstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
+            <Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"]]></Publish>
+            <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+            <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+            <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
+
+            <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1">NOT Installed</Publish>
+            <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2">Installed AND NOT PATCH</Publish>
+            <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="TnbWelcomeDlg" Order="2">Installed AND PATCH</Publish>
+
+            <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+
+            <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+            <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+            <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+
+            <!-- ARPNOMODIFY already handled above via SetProperty - omitted here
+                 to avoid a duplicate Property:ARPNOMODIFY symbol. -->
+
+            <Dialog Id="TnbWelcomeDlg" Width="370" Height="270" Title="!(loc.WelcomeDlg_Title)">
+                <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" >
+                    <Publish Property="WixUI_InstallMode" Value="Update">Installed AND PATCH</Publish>
+                </Control>
+                <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+                    <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+                </Control>
+                <Control Id="Bitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="no" Text="!(loc.WelcomeDlgBitmap)" />
+                <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Disabled="yes" Text="!(loc.WixUIBack)" />
+                <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+                <Control Id="Description" Type="Text" X="135" Y="80" Width="220" Height="60" Transparent="yes" NoPrefix="yes" Text="{\TnbLightBody}!(loc.WelcomeDlgDescription)" >
+                    <Condition Action="show">NOT Installed OR NOT PATCH</Condition>
+                    <Condition Action="hide">Installed AND PATCH</Condition>
+                </Control>
+                <Control Id="PatchDescription" Type="Text" X="135" Y="80" Width="220" Height="60" Transparent="yes" NoPrefix="yes" Text="{\TnbLightBody}!(loc.WelcomeUpdateDlgDescriptionUpdate)" >
+                    <Condition Action="show">Installed AND PATCH</Condition>
+                    <Condition Action="hide">NOT Installed OR NOT PATCH</Condition>
+                </Control>
+                <Control Id="Title" Type="Text" X="135" Y="20" Width="220" Height="60" Transparent="yes" NoPrefix="yes" Text="{\TnbLightTitle}!(loc.WelcomeDlgTitle)" />
+            </Dialog>
+
+            <Dialog Id="TnbExitDialog" Width="370" Height="270" Title="!(loc.ExitDialog_Title)">
+                <Control Id="Finish" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Cancel="yes" Text="!(loc.WixUIFinish)" />
+                <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Disabled="yes" Text="!(loc.WixUICancel)" />
+                <Control Id="Bitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="234" TabSkip="no" Text="!(loc.ExitDialogBitmap)" />
+                <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Disabled="yes" Text="!(loc.WixUIBack)" />
+                <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+                <Control Id="Description" Type="Text" X="135" Y="70" Width="220" Height="40" Transparent="yes" NoPrefix="yes" Text="{\TnbLightBody}!(loc.ExitDialogDescription)" />
+                <Control Id="Title" Type="Text" X="135" Y="20" Width="220" Height="60" Transparent="yes" NoPrefix="yes" Text="{\TnbLightTitle}!(loc.ExitDialogTitle)" />
+                <Control Id="OptionalText" Type="Text" X="135" Y="110" Width="220" Height="80" Transparent="yes" NoPrefix="yes" Hidden="yes" Text="{\TnbLightBody}[WIXUI_EXITDIALOGOPTIONALTEXT]">
+                    <Condition Action="show">WIXUI_EXITDIALOGOPTIONALTEXT AND NOT Installed</Condition>
+                </Control>
+                <Control Id="OptionalCheckBox" Type="CheckBox" X="135" Y="190" Width="220" Height="40" Hidden="yes" Property="WIXUI_EXITDIALOGOPTIONALCHECKBOX" CheckBoxValue="1" Text="{\TnbLightBody}[WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT]">
+                    <Condition Action="show">WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT AND NOT Installed</Condition>
+                </Control>
+            </Dialog>
+
+            <InstallUISequence>
+                <Show Dialog="TnbWelcomeDlg" Before="ProgressDlg" Overridable="yes">NOT Installed OR PATCH</Show>
+                <Show Dialog="TnbExitDialog" OnExit="success" Overridable="yes" />
+            </InstallUISequence>
+            <AdminUISequence>
+                <Show Dialog="TnbExitDialog" OnExit="success" Overridable="yes" />
+            </AdminUISequence>
+        </UI>
+        <UIRef Id="WixUI_Common" />
 
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="DesktopFolder" Name="Desktop">

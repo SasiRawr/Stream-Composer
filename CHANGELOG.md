@@ -4,6 +4,22 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.18.2 — 2026-08-18 (pre-release, pending verification)
+
+Fixed unreadable text on the Windows installer's (.msi) Welcome and Finish
+screens.
+
+### Fixed
+- **Black text on the branded dark background is now light and readable.**
+  The .msi installer's Welcome and Finish screens show our full branded
+  background (logo, "TheNerdyBox", "Stream Composer Suite") — but their
+  title and description text had no explicit color, so it defaulted to
+  black and was invisible against that dark background. Now styled in a
+  light off-white/lavender to match. The "Launch app" checkbox on the
+  Finish screen gets the same treatment. Every other installer screen
+  (choose folder, ready to install, installing...) only ever showed a
+  plain white banner strip, so their text was never actually a problem.
+
 ## v1.18.1 — 2026-08-18 (pre-release, pending verification)
 
 Twitch Alerts actually works now — the missing piece from v1.18.0.
