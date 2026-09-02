@@ -74,6 +74,11 @@ Var PassiveMode
 Var UpdateMode
 Var NoShortcutMode
 Var WixMode
+; TNB - captured while the matching registry view is still active, because
+; every read of these happens after the view has been restored.
+Var WixSearchPass
+Var WixUninstallString
+Var WixDisplayVersion
 Var OldMainBinaryName
 
 Name "${PRODUCTNAME}"
@@ -164,9 +169,88 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !define MUI_LANGDLL_REGISTRY_KEY "${MANUPRODUCTKEY}"
 !define MUI_LANGDLL_REGISTRY_VALUENAME "Installer Language"
 
+; ---------------------------------------------------------------------------
+; Full-bleed dark branding for the Welcome and Finish pages.
+;
+; MUI2 lays these pages out as a 164px branding strip on the left beside a
+; white body. This stretches the branding across the entire page instead and
+; repaints the text light, so the two pages match the product's own artwork.
+;
+; Unlike the MSI dialog engine, NSIS sets real control colours - there is no
+; restriction tying text colour to text size, so the heading keeps its larger
+; weight while still being light.
+; ---------------------------------------------------------------------------
+Var TnbDarkBmp
+
+; Sampled from the artwork's outer edge by make-nsis-sidebar-dark.ps1. If that
+; script is re-run and reports a different colour, change this to match.
+!define TNB_PAGE_BG    0x150F25
+!define TNB_PAGE_TITLE 0xF2F1F9
+!define TNB_PAGE_TEXT  0xE2E0F0
+
+; A Function rather than a !macro on purpose: both the Welcome and the Finish
+; page call this, and expanding a macro twice would emit duplicate LogicLib
+; labels.
+Function TnbApplyDarkPage
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+
+  FindWindow $0 "#32770" "" $HWNDPARENT
+  ${If} $0 <> 0
+    ; Flat dark page first. This doubles as the fallback: if the bitmap resize
+    ; below does not take effect, the page is still dark rather than half white.
+    SetCtlColors $0 "${TNB_PAGE_TEXT}" "${TNB_PAGE_BG}"
+
+    ; Measure the page instead of assuming 497x314, so this holds at any DPI.
+    System::Call "*(i,i,i,i) p .r1"
+    System::Call "user32::GetClientRect(p $0, p r1)"
+    System::Call "*$1(i,i,i .r2,i .r3)"
+    System::Free $1
+
+    ; Stretch the branding over the whole page and drop it behind the text.
+    ; HWND_BOTTOM (1) keeps it under the sibling text controls; SWP_NOACTIVATE
+    ; (0x0010) stops it stealing focus. modern-wizard.bmp is the name MUI2
+    ; extracts MUI_WELCOMEFINISHPAGE_BITMAP to.
+    GetDlgItem $4 $0 1200
+    ${If} $4 <> 0
+    ${AndIf} $2 > 0
+      System::Call "user32::SetWindowPos(p $4, p 1, i 0, i 0, i $2, i $3, i 0x0010)"
+      ${NSD_SetStretchedImage} $4 "$PLUGINSDIR\modern-wizard.bmp" $TnbDarkBmp
+    ${EndIf}
+
+    ; Light text on a transparent background so the artwork shows through.
+    ; 1201 is the heading, 1202 the body; anything after that is a checkbox
+    ; the Finish page adds. Missing ids simply return 0 and are skipped.
+    ${For} $1 1201 1206
+      GetDlgItem $4 $0 $1
+      ${If} $4 <> 0
+        ${If} $1 == 1201
+          SetCtlColors $4 "${TNB_PAGE_TITLE}" transparent
+        ${Else}
+          SetCtlColors $4 "${TNB_PAGE_TEXT}" transparent
+        ${EndIf}
+      ${EndIf}
+    ${Next}
+  ${EndIf}
+
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+Function TnbWelcomeShow
+  Call TnbApplyDarkPage
+FunctionEnd
+
 ; Installer pages, must be ordered as they appear
 ; 1. Welcome Page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW TnbWelcomeShow
 !insertmacro MUI_PAGE_WELCOME
 
 ; 2. License Page (if defined)
@@ -197,22 +281,57 @@ Function PageReinstall
   ; our ${PRODUCTNAME} and ${MANUFACTURER} but wasn't installed by our WiX installer,
   ; however, this should be fine since the user will have to confirm the uninstallation
   ; and they can chose to abort it if doesn't make sense.
-  StrCpy $0 0
-  wix_loop:
-    EnumRegKey $1 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" $0
-    StrCmp $1 "" wix_loop_done ; Exit loop if there is no more keys to loop on
-    IntOp $0 $0 + 1
-    ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "DisplayName"
-    ReadRegStr $R1 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "Publisher"
-    StrCmp "$R0$R1" "${PRODUCTNAME}${MANUFACTURER}" 0 wix_loop
-    ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "UninstallString"
-    ${StrCase} $R1 $R0 "L"
-    ${StrLoc} $R0 $R1 "msiexec" ">"
-    StrCmp $R0 0 0 wix_loop_done
-    StrCpy $WixMode 1
-    StrCpy $R6 "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1"
-    Goto compare_version
+  ;
+  ; TNB CHANGE - the search below is run against BOTH registry views.
+  ;
+  ; NSIS builds a 32-bit installer, so an unqualified HKLM read of the Uninstall
+  ; hive is silently redirected to SOFTWARE\WOW6432Node\... Our .msi has always
+  ; been a 64-bit per-machine package (summary Template "x64;0", ALLUSERS=1), so
+  ; it registers in the NATIVE 64-bit hive - a view the stock template never
+  ; looks at. Measured on a real machine: the default view returns the same 198
+  ; keys as an explicit `SetRegView 32`, while `SetRegView 64` returns a
+  ; different set of 176. So this migration path existed but could never fire,
+  ; which is why an .msi install from v1.16.3-v1.18.2 survives alongside a fresh
+  ; .exe install instead of being replaced by it.
+  ;
+  ; 64-bit is checked first (that is where ours lives); the 32-bit view is still
+  ; checked afterwards so nothing that used to be found stops being found.
+  ; DisplayVersion and UninstallString are captured here, while the correct view
+  ; is active, because every later read happens after the view is restored.
+  StrCpy $WixSearchPass 0
+  wix_view_loop:
+    ${If} $WixSearchPass = 0
+      SetRegView 64
+    ${Else}
+      SetRegView 32
+    ${EndIf}
+    StrCpy $0 0
+    wix_loop:
+      EnumRegKey $1 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" $0
+      StrCmp $1 "" wix_view_next ; No more keys in this view - try the next one
+      IntOp $0 $0 + 1
+      ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "DisplayName"
+      ReadRegStr $R1 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "Publisher"
+      StrCmp "$R0$R1" "${PRODUCTNAME}${MANUFACTURER}" 0 wix_loop
+      ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "UninstallString"
+      ${StrCase} $R1 $R0 "L"
+      ${StrLoc} $R2 $R1 "msiexec" ">"
+      ; Not an MSI entry (our own per-machine NSIS record would land here) -
+      ; keep scanning rather than abandoning the search, which is what upstream
+      ; did and what made a second matching entry hide the real one.
+      StrCmp $R2 0 0 wix_loop
+      StrCpy $WixMode 1
+      StrCpy $WixUninstallString $R0
+      ReadRegStr $WixDisplayVersion HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "DisplayVersion"
+      SetRegView default
+      Goto compare_version
+    wix_view_next:
+    IntOp $WixSearchPass $WixSearchPass + 1
+    ${If} $WixSearchPass < 2
+      Goto wix_view_loop
+    ${EndIf}
   wix_loop_done:
+  SetRegView default
 
   ; Check if there is an existing installation, if not, abort the reinstall page
   ReadRegStr $R0 SHCTX "${UNINSTKEY}" ""
@@ -224,7 +343,7 @@ Function PageReinstall
   compare_version:
   StrCpy $R4 "$(older)"
   ${If} $WixMode = 1
-    ReadRegStr $R0 HKLM "$R6" "DisplayVersion"
+    StrCpy $R0 $WixDisplayVersion
   ${Else}
     ReadRegStr $R0 SHCTX "${UNINSTKEY}" "DisplayVersion"
   ${EndIf}
@@ -349,7 +468,7 @@ Function PageLeaveReinstall
     ClearErrors
 
     ${If} $WixMode = 1
-      ReadRegStr $R1 HKLM "$R6" "UninstallString"
+      StrCpy $R1 $WixUninstallString
       ExecWait '$R1' $0
     ${Else}
       ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
@@ -441,7 +560,9 @@ Var WebsiteCheckboxState
 Function FinishShowWebsiteCheckbox
   ${NSD_CreateCheckbox} 120u 130u 195u 10u "Check us out on the web"
   Pop $WebsiteCheckbox
-  SetCtlColors $WebsiteCheckbox "${MUI_TEXTCOLOR}" "${MUI_BGCOLOR}"
+  Call TnbApplyDarkPage
+  ; After TnbApplyDarkPage so it is not overwritten by the loop in there.
+  SetCtlColors $WebsiteCheckbox "${TNB_PAGE_TEXT}" transparent
   ${NSD_SetState} $WebsiteCheckbox ${BST_CHECKED}
 FunctionEnd
 
@@ -904,19 +1025,31 @@ Section Uninstall
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
   ${EndIf}
 
+  ; Clear this installer's own bookkeeping keys.
+  ;
+  ; These hold the install location and the chosen installer language - they are
+  ; the installer's records, not the user's data, so they go on every real
+  ; uninstall regardless of the "delete app data" checkbox. Upstream nests this
+  ; inside that checkbox, which means anyone taking the default leaves
+  ; ${MANUPRODUCTKEY} behind pointing at a directory that no longer exists.
+  ; That orphan is exactly the key a WiX install reads to choose its own
+  ; directory, so leaving it is what let an MSI copy install itself on top of a
+  ; removed NSIS one while keeping a separate uninstall entry.
+  ;
+  ; Skipped while updating, because the new version re-reads the location.
+  ${If} $UpdateMode <> 1
+    DeleteRegKey SHCTX "${MANUPRODUCTKEY}"
+    DeleteRegKey /ifempty SHCTX "${MANUKEY}"
+
+    DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
+    DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
+    DeleteRegKey /ifempty HKCU "${MANUKEY}"
+  ${EndIf}
+
   ; Delete app data if the checkbox is selected
   ; and if not updating
   ${If} $DeleteAppDataCheckboxState = 1
   ${AndIf} $UpdateMode <> 1
-    ; Clear the install location $INSTDIR from registry
-    DeleteRegKey SHCTX "${MANUPRODUCTKEY}"
-    DeleteRegKey /ifempty SHCTX "${MANUKEY}"
-
-    ; Clear the install language from registry
-    DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
-    DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
-    DeleteRegKey /ifempty HKCU "${MANUKEY}"
-
     SetShellVarContext current
     RmDir /r "$APPDATA\${BUNDLEID}"
     RmDir /r "$LOCALAPPDATA\${BUNDLEID}"

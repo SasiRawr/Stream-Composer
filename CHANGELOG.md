@@ -4,6 +4,34 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.18.3 — 2026-09-01 (pre-release, pending verification)
+
+One installer instead of two, fully branded — and it now cleans up properly
+after itself.
+
+### Changed
+- **There is now only one Windows installer: the `.exe`.** The separate
+  `.msi` download is discontinued. Windows treated the two as completely
+  unrelated programs, so installing one never replaced the other — you could
+  end up with two copies of Stream Composer Suite registered at once, two
+  entries in Add/Remove Programs, and two icons in the system tray. Shipping
+  a single installer removes that whole class of problem.
+- **The installer's Welcome and Finish screens are now fully branded.** The
+  artwork covers the entire page rather than a strip down one side, with the
+  text restyled to read clearly against it.
+
+### Fixed
+- **Installing the `.exe` now finds and removes an older `.msi` install.**
+  If you installed any version from v1.16.3 to v1.18.2 using the `.msi`, the
+  installer previously could not see it and left it in place alongside the
+  new install. It now detects it and offers to remove it first, so you end
+  up with one copy instead of two.
+- **Uninstalling no longer leaves a registry entry behind.** The uninstaller
+  reported success but kept a key recording where the app had been
+  installed, even after everything else was gone. That stale entry is what
+  let a later install put itself in the wrong folder. It is now removed on
+  every uninstall — not only when "delete application data" is ticked.
+
 ## v1.18.2 — 2026-08-18 (pre-release, pending verification)
 
 Fixed unreadable text on the Windows installer's (.msi) Welcome and Finish
