@@ -33,6 +33,8 @@ assert(script.includes('"fade"'), 'the transition style is serialized into the o
 assert(script.includes("message.iconType === 'svg'"), 'the icon-swap branch for svg icons is present');
 assert(script.includes("message.iconType === 'image'"), 'the icon-swap branch for image icons is present');
 assert(script.includes('loopForever'), 'the animation loop entry point is present');
+assert(script.includes("addEventListener('obsSourceVisibleChanged'"), 'turning the OBS source back on restarts the animation');
+assert(!/sleep\((TIMING|50|700)/.test(script), 'every wait in the cycle can be cancelled by a restart');
 
 const scriptB = buildPopupSlideScript('popup-item2-1', [{ tag: 'A', text: 'B', iconType: 'none' }], timing, 'random');
 assert(scriptB.includes("document.getElementById('popup-item2-1')"), 'a second instance gets its own distinct element ids, not item1\'s');

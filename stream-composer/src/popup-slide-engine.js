@@ -72,32 +72,67 @@ export function buildPopupSlideScript(instanceId, slides, timing, transitionStyl
     textPanel.style.maxWidth = textInner.scrollWidth + 46 + 'px';
   }
 
-  async function runCycle() {
+  // Each run of the loop owns a generation number. Restarting bumps it, and
+  // the old run notices at its next wait and quietly stops, so two loops
+  // never fight over the same element.
+  let generation = 0;
+  const STOPPED = {};
+  async function wait(ms, gen) {
+    await sleep(ms);
+    if (gen !== generation) throw STOPPED;
+  }
+
+  function resetToHidden() {
+    textInner.classList.remove('is-shown');
+    textPanel.style.maxWidth = '0px';
+    wrap.classList.remove('is-visible');
+  }
+
+  async function runCycle(gen) {
     setMessage(SLIDES[0]);
     textPanel.style.maxWidth = '0px';
     wrap.classList.add('is-visible');
-    await sleep(TIMING.holdBeforeOpening + 700);
+    await wait(TIMING.holdBeforeOpening + 700, gen);
 
     setMessage(SLIDES[0]);
-    await sleep(50);
+    await wait(50, gen);
     textInner.classList.add('is-shown');
-    await sleep(TIMING.textOpenDuration + TIMING.perMessageHold);
+    await wait(TIMING.textOpenDuration + TIMING.perMessageHold, gen);
 
     for (let i = 1; i < SLIDES.length; i++) {
       textInner.classList.remove('is-shown');
-      await sleep(TIMING.swapFade);
+      await wait(TIMING.swapFade, gen);
       setMessage(SLIDES[i]);
       textInner.classList.add('is-shown');
-      await sleep(TIMING.perMessageHold);
+      await wait(TIMING.perMessageHold, gen);
     }
 
     textInner.classList.remove('is-shown');
     textPanel.style.maxWidth = '0px';
-    await sleep(TIMING.holdBeforeSlideOut);
+    await wait(TIMING.holdBeforeSlideOut, gen);
     wrap.classList.remove('is-visible');
-    await sleep(700 + TIMING.slideOutPause);
+    await wait(700 + TIMING.slideOutPause, gen);
   }
 
-  (async function loopForever() { while (true) { await runCycle(); } })();
+  async function loopForever(gen) {
+    try { while (true) { await runCycle(gen); } }
+    catch (e) { if (e !== STOPPED) throw e; }
+  }
+
+  function restart() {
+    generation++;
+    resetToHidden();
+    // One frame in the hidden state first, so the slide-in plays from the start
+    requestAnimationFrame(() => requestAnimationFrame(() => loopForever(generation)));
+  }
+
+  // Turning the source's eye back on in OBS replays from the first slide,
+  // instead of carrying on wherever the replay timer happened to be.
+  window.addEventListener('obsSourceVisibleChanged', (event) => {
+    if (event.detail && event.detail.visible) restart();
+    else { generation++; resetToHidden(); }
+  });
+
+  loopForever(generation);
 })();`;
 }

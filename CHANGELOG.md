@@ -24,6 +24,9 @@ branded installer and uninstaller.
   from the list. A live line shows whether the PNGTuber can hear OBS.
 - **The uninstaller now has branded Welcome and Finish screens** that match
   the installer.
+- **Popup Slides replay on demand.** Turning the source's eye off and back on
+  in OBS starts the slides again from the first one, instead of waiting out
+  the replay timer. Re-export your slider to pick this up.
 
 ### Changed
 - **New PNGTubers react to an OBS audio source by default.** OBS normally
