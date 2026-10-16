@@ -68,6 +68,12 @@ fn read_text_file(path: String) -> Result<String, String> {
 /// Overwrites a text file with new contents — the real in-place save.
 #[tauri::command]
 fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    // Same as write_binary_file: a preview or export of an item with no
+    // image assets is the first thing written into its folder
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("Couldn't create folder for {}: {}", path, err))?;
+    }
     std::fs::write(&path, contents).map_err(|err| format!("Couldn't write {}: {}", path, err))
 }
 

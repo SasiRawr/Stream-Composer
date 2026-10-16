@@ -25,7 +25,13 @@ A new, more polished look for Popup Slides.
   export exactly as before. The Text transition style option is hidden while
   Deluxe is selected, since Deluxe has its own text animation.
 
-## v1.19.0 — 2026-10-15 (pre-release, pending verification)
+### Fixed
+- **Preview no longer fails on a new project.** If nothing in the project
+  used a custom image, the app had no folder to write the preview into and
+  showed "The system cannot find the path specified". It now creates the
+  folder itself.
+
+## v1.19.0 — 2026-10-15 (released as part of v1.20.0)
 
 What you see in the editor is now exactly what shows up in OBS, plus a
 right-click menu, a PNGTuber that works with OBS out of the box, and a fully
