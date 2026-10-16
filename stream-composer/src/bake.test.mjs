@@ -343,5 +343,20 @@ const outOfOrder = baseProject([
 const orderedHtml = buildSceneHtml(outOfOrder, {});
 assert(orderedHtml.indexOf('z-index:1;') < orderedHtml.indexOf('z-index:5;'), 'items are emitted in zIndex order regardless of their order in project.items');
 
+// ---- no setup/permission/status text is ever baked into the stream ----
+const allBakedOutputs = {
+  chat: chatHtml, countdown: countdownHtml, pngtuber: pngtuberHtml, 'pngtuber-bounce': pngtuberBounceHtml,
+  'pngtuber-brightness': pngtuberBrightnessHtml, 'pngtuber-mouthflap': pngtuberMouthFlapHtml, 'pngtuber-obs': pngtuberObsHtml,
+  'viewer-pet': petHtml, 'pet-roster': rosterHtml, 'now-playing': nowPlayingHtml, 'twitch-alerts': alertsHtml,
+};
+for (const [name, html] of Object.entries(allBakedOutputs)) {
+  assert(!/-status\b/.test(html), `${name}: no status element is emitted into the baked page`);
+  // Script bodies may mention setup in console.warn() text; what must never exist is a visible element or a DOM write carrying it.
+  const visibleMarkup = html.replace(/<script[\s\S]*?<\/script>/g, '');
+  assert(!/mic access|needs stream composer|no channel name|could not resolve/i.test(visibleMarkup), `${name}: no setup/permission wording in the visible markup`);
+  assert(!/statusEl|\.textContent\s*=\s*'[^']*(mic access|needs stream composer|no channel name)/i.test(html), `${name}: no script writes setup wording into the page`);
+
+}
+
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

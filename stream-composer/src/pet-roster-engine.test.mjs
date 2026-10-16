@@ -27,7 +27,7 @@ const twitchScript = buildPetRosterScript('roster-item1-0', 'assets/roster-item1
   platformKey: 'twitch', channelName: 'somestreamer', maxPets: 6,
 });
 assert(twitchScript.includes("document.getElementById('roster-item1-0-stage')"), 'references the correct stage element id for this instance');
-assert(twitchScript.includes("document.getElementById('roster-item1-0-status')"), 'references the correct status element id for this instance');
+assert(!twitchScript.includes('-status') && !twitchScript.includes('statusEl'), 'draws no status element - problems are logged to the console only, never shown on stream');
 assert(twitchScript.includes('PET_SRC = "assets/roster-item1-0.png"'), 'the pet image asset path is baked into the output');
 assert(twitchScript.includes('MAX_PETS = 6'), 'the configured max-pets cap is baked into the output');
 assert(twitchScript.includes('connectTwitch("somestreamer")'), 'dispatches to the real connectTwitch call with the configured channel name');
@@ -45,7 +45,7 @@ checkSyntax(kickScript, 'kick');
 
 // ---- no channel name configured yet ----
 const noChannelScript = buildPetRosterScript('roster-item3-2', 'a.png', { platformKey: 'twitch', channelName: '' });
-assert(noChannelScript.includes("No channel name set for this Chat Pet Roster yet."), 'shows a real status message instead of connecting when no channel is configured');
+assert(noChannelScript.includes("console.warn('No channel name set for this Chat Pet Roster yet.')"), 'logs a console warning (never visible text) instead of connecting when no channel is configured');
 assert(!/connectTwitch\("/.test(noChannelScript), 'no channel configured: connectTwitch is never actually CALLED with a literal argument (the function definition existing is fine, only the call site matters)');
 checkSyntax(noChannelScript, 'no-channel');
 
@@ -75,7 +75,7 @@ assert(lowCapScript.includes('MAX_PETS = 1'), 'a maxPets of 0 (or below) clamps 
 // ---- defaults: no props at all still produces a valid, sensible script ----
 const defaultScript = buildPetRosterScript('roster-item7-6', 'a.png', {});
 assert(defaultScript.includes('MAX_PETS = 6'), 'an unset maxPets defaults to a reasonable 6');
-assert(defaultScript.includes("No channel name set"), 'an unset channelName falls back to the status-message branch, same as an explicitly empty one');
+assert(defaultScript.includes("console.warn('No channel name set"), 'an unset channelName falls back to the console-warning branch, same as an explicitly empty one');
 checkSyntax(defaultScript, 'default');
 
 // ---- distinct instances don't leak each other's ids ----

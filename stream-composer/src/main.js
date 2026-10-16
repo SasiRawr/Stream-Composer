@@ -13,6 +13,11 @@
 
 import { Canvas, Rect, FabricImage, Gradient } from 'fabric';
 import { buildSceneHtml, collectAssetCopies } from './bake.js';
+import { buildExportNotes, exportNotesToText } from './export-notes.js';
+import {
+  itemCenterForFabric, itemTopLeftFromFabric, migrateProjectCoordinates, markCoordinatesCurrent,
+  centerPlacement, centerHorizontalPlacement, centerVerticalPlacement, stretchPlacement, fitPlacement, reorderZIndexes,
+} from './coordinates.js';
 import { applyChromaKey } from './chromakey.js';
 import { cropImageData, padImageData } from './croppad.js';
 import { applyColorAdjustments } from './coloradjust.js';
@@ -183,7 +188,7 @@ function defaultPropsFor(type) {
       flapIntervalMs: 120,      // mouthFlap only — how fast the mouth alternates open/closed while talking
       micThreshold: 15, // percent sensitivity, 0-100 — see pngtuber-engine.js for how this maps to a 0-1 RMS threshold
       holdMs: 200,       // how long the talking state stays up through brief pauses before falling back to idle
-      audioSource: 'mic', // 'mic' (getUserMedia, default) | 'obs' — react to a live OBS input's volume via the local relay instead
+      audioSource: 'obs', // 'obs' (default) - react to a live OBS input's volume via the local relay | 'mic' - experimental getUserMedia, which OBS usually blocks for browser sources
       obsInputName: '',   // 'obs' mode only — the OBS input's name, as returned by obs_list_inputs
     };
   }
@@ -250,7 +255,7 @@ function nextZIndex() {
 
 // ---- PROJECT LIFECYCLE --------------------------------------------------------
 function newProjectData(canvasWidth, canvasHeight) {
-  return { canvasWidth, canvasHeight, items: [] };
+  return markCoordinatesCurrent({ canvasWidth, canvasHeight, items: [] });
 }
 
 async function createProject(canvasWidth, canvasHeight) {
@@ -275,6 +280,7 @@ async function createProjectFromTemplates(templates, personalization) {
   if (!folder) return;
   project = mergeStarterProjects(templates.map((t) => t.buildProject()));
   if (personalization) project = personalizeProject(project, personalization);
+  markCoordinatesCurrent(project); // starter templates lay items out by top-left corner
   projectFolder = folder;
   syncCurrentProjectPath();
   await openWorkspace();
@@ -301,6 +307,9 @@ async function openProject() {
   }
   const text = await invoke('read_text_file', { path: projectPath });
   project = JSON.parse(text);
+  // Older projects were positioned in an editor that stored item centers in
+  // x/y; convert once so what the user saw there is preserved.
+  migrateProjectCoordinates(project);
   projectFolder = folder;
   syncCurrentProjectPath();
   await openWorkspace();
@@ -310,6 +319,7 @@ async function openProject() {
 async function saveProject() {
   if (!project || !projectFolder) return;
   const projectPath = joinPath(projectFolder, 'project.json');
+  markCoordinatesCurrent(project);
   await invoke('write_text_file', { path: projectPath, contents: JSON.stringify(project, null, 2) });
   setStatus('Saved to ' + projectPath, 'ok');
 }
@@ -441,6 +451,7 @@ async function openWorkspace() {
   fabricCanvas.on('selection:updated', (e) => onFabricSelectionChanged(e.selected));
   fabricCanvas.on('selection:cleared', () => onFabricSelectionChanged([]));
   fabricCanvas.on('object:modified', (e) => onFabricObjectModified(e.target));
+  fabricCanvas.on('contextmenu', onFabricContextMenu);
 
   selectItem(null);
 
@@ -506,9 +517,14 @@ const PLACEHOLDER_ACCENTS = {
 function createRectFabricObject(item) {
   const accent = PLACEHOLDER_ACCENTS[item.type];
   const p = item.props;
+  const center = itemCenterForFabric(item, displayScale);
   const rect = new Rect({
-    left: item.x * displayScale,
-    top: item.y * displayScale,
+    // Fabric positions by center (its v7 default); item.x/y is the top-left
+    // corner, so convert explicitly - see coordinates.js.
+    originX: 'center',
+    originY: 'center',
+    left: center.left,
+    top: center.top,
     width: item.width * displayScale,
     height: item.height * displayScale,
     angle: item.rotation || 0,
@@ -540,9 +556,12 @@ async function createImageFabricObject(item) {
   const img = await FabricImage.fromURL(dataUrl);
   const naturalWidth = img.width || 1;
   const naturalHeight = img.height || 1;
+  const center = itemCenterForFabric(item, displayScale);
   img.set({
-    left: item.x * displayScale,
-    top: item.y * displayScale,
+    originX: 'center',
+    originY: 'center',
+    left: center.left,
+    top: center.top,
     angle: item.rotation || 0,
     scaleX: (item.width * displayScale) / naturalWidth,
     scaleY: (item.height * displayScale) / naturalHeight,
@@ -555,8 +574,13 @@ async function createImageFabricObject(item) {
 function syncItemFromFabricObject(obj) {
   const item = project.items.find((i) => i.id === obj.itemId);
   if (!item) return;
-  item.x = Math.round(obj.left / displayScale);
-  item.y = Math.round(obj.top / displayScale);
+  // Position comes from the object's center minus half its on-screen size
+  // (measured BEFORE the scale is folded into width/height below); the
+  // center is what rotating and drag-resizing keep meaningful.
+  const center = obj.getCenterPoint();
+  const topLeft = itemTopLeftFromFabric(center.x, center.y, obj.width * obj.scaleX, obj.height * obj.scaleY, displayScale);
+  item.x = topLeft.x;
+  item.y = topLeft.y;
   item.rotation = Math.round(obj.angle || 0);
   if (item.type === 'image') {
     item.width = Math.round((obj.width * obj.scaleX) / displayScale);
@@ -631,6 +655,134 @@ function deleteSelectedItem() {
   project.items = project.items.filter((i) => i.id !== selectedItemId);
   selectItem(null);
   fabricCanvas.requestRenderAll();
+}
+
+// ---- CANVAS RIGHT-CLICK MENU ------------------------------------------------
+// Fabric hit-tests the right-click for us (its 'contextmenu' event carries
+// the topmost target under the pointer); every action then goes through
+// applyItemChanges(), the same item -> Fabric sync a properties-panel edit
+// or a drag ends in. There is no autosave or undo stack anywhere in this app
+// (a drag doesn't save either) - Save/Bake persist, exactly as for a drag.
+let contextMenuEl = null;
+
+function syncFabricObjectFromItem(item) {
+  const obj = fabricObjectsById.get(item.id);
+  if (!obj) return;
+  const center = itemCenterForFabric(item, displayScale);
+  if (item.type === 'image') {
+    obj.set({ scaleX: (item.width * displayScale) / (obj.width || 1), scaleY: (item.height * displayScale) / (obj.height || 1) });
+  } else {
+    obj.set({ width: item.width * displayScale, height: item.height * displayScale, scaleX: 1, scaleY: 1 });
+  }
+  obj.set({ left: center.left, top: center.top, angle: item.rotation || 0 });
+  obj.setCoords();
+  fabricCanvas.requestRenderAll();
+}
+
+function applyItemChanges(itemId, changes) {
+  const item = project && project.items.find((i) => i.id === itemId);
+  if (!item) return;
+  Object.assign(item, changes);
+  syncFabricObjectFromItem(item);
+}
+
+function reorderSelectedItem(itemId, mode) {
+  const order = reorderZIndexes(project.items, itemId, mode);
+  if (!order) return;
+  for (const it of project.items) it.zIndex = order.get(it.id);
+  [...project.items].sort((a, b) => a.zIndex - b.zIndex).forEach((it, idx) => {
+    const obj = fabricObjectsById.get(it.id);
+    if (obj) fabricCanvas.moveObjectTo(obj, idx);
+  });
+  fabricCanvas.requestRenderAll();
+}
+
+function contextMenuEntriesFor(item) {
+  const cw = project.canvasWidth;
+  const ch = project.canvasHeight;
+  return [
+    { label: 'Center on canvas', run: () => applyItemChanges(item.id, centerPlacement(item, cw, ch)) },
+    { label: 'Center horizontally', run: () => applyItemChanges(item.id, centerHorizontalPlacement(item, cw)) },
+    { label: 'Center vertically', run: () => applyItemChanges(item.id, centerVerticalPlacement(item, ch)) },
+    { separator: true },
+    { label: 'Stretch to canvas', run: () => applyItemChanges(item.id, stretchPlacement(cw, ch)) },
+    { label: 'Fit to canvas (keep aspect ratio)', run: () => applyItemChanges(item.id, fitPlacement(item, cw, ch)) },
+    { separator: true },
+    { label: 'Bring to front', run: () => reorderSelectedItem(item.id, 'front') },
+    { label: 'Bring forward', run: () => reorderSelectedItem(item.id, 'forward') },
+    { label: 'Send backward', run: () => reorderSelectedItem(item.id, 'backward') },
+    { label: 'Send to back', run: () => reorderSelectedItem(item.id, 'back') },
+    { separator: true },
+    { label: 'Export as its own source…', run: () => exportItemAsSource(item.id) },
+    { label: 'Delete', danger: true, run: () => deleteSelectedItem() },
+  ];
+}
+
+function closeContextMenu() {
+  if (contextMenuEl) {
+    contextMenuEl.remove();
+    contextMenuEl = null;
+  }
+}
+
+function openContextMenu(clientX, clientY, item) {
+  closeContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'context-menu';
+  menu.setAttribute('role', 'menu');
+  for (const entry of contextMenuEntriesFor(item)) {
+    if (entry.separator) {
+      const sep = document.createElement('div');
+      sep.className = 'context-menu-sep';
+      menu.appendChild(sep);
+      continue;
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.setAttribute('role', 'menuitem');
+    btn.className = 'context-menu-item' + (entry.danger ? ' danger' : '');
+    btn.textContent = entry.label;
+    btn.addEventListener('click', () => {
+      closeContextMenu();
+      entry.run();
+    });
+    menu.appendChild(btn);
+  }
+  document.body.appendChild(menu);
+  contextMenuEl = menu;
+  // Keep the whole menu on-screen near the window edges.
+  const margin = 6;
+  const left = Math.max(margin, Math.min(clientX, window.innerWidth - menu.offsetWidth - margin));
+  const top = Math.max(margin, Math.min(clientY, window.innerHeight - menu.offsetHeight - margin));
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+}
+
+function onFabricContextMenu(opt) {
+  const target = opt.target;
+  if (!target || !target.itemId) {
+    closeContextMenu();
+    return;
+  }
+  fabricCanvas.setActiveObject(target); // fires selection:created/updated -> properties panel
+  selectItem(target.itemId);
+  fabricCanvas.requestRenderAll();
+  openContextMenu(opt.e.clientX, opt.e.clientY, project.items.find((i) => i.id === target.itemId));
+}
+
+function wireCanvasContextMenuDismissal() {
+  // The WebView's own menu (Back / Reload / Inspect) never belongs over the canvas.
+  document.getElementById('canvasWrap').addEventListener('contextmenu', (e) => e.preventDefault(), true);
+  document.addEventListener('pointerdown', (e) => {
+    if (contextMenuEl && !contextMenuEl.contains(e.target)) closeContextMenu();
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeContextMenu();
+  });
+  document.addEventListener('scroll', closeContextMenu, true);
+  document.addEventListener('wheel', closeContextMenu, { passive: true, capture: true });
+  window.addEventListener('blur', closeContextMenu);
+  window.addEventListener('resize', closeContextMenu);
 }
 
 // ---- ASSET LIBRARY ---------------------------------------------------------
@@ -775,6 +927,7 @@ function renderPropertiesPanel() {
   // PNGTuber mic test session first so we never leave a hot mic/AudioContext
   // running against DOM elements that are about to be thrown away.
   stopMicPreview();
+  clearInterval(obsRelayPollTimer);
   const body = els.propertiesBody;
   const item = project && selectedItemId ? project.items.find((i) => i.id === selectedItemId) : null;
   if (!item) {
@@ -1155,13 +1308,15 @@ async function openCropDialog(item) {
   tmpCanvas.height = cropOriginalImageData.height;
   tmpCanvas.getContext('2d').putImageData(cropOriginalImageData, 0, 0);
   const bgImage = await FabricImage.fromURL(tmpCanvas.toDataURL('image/png'));
-  bgImage.set({ left: 0, top: 0, scaleX: cropDisplayScale, scaleY: cropDisplayScale, selectable: false, evented: false });
+  bgImage.set({ originX: 'left', originY: 'top', left: 0, top: 0, scaleX: cropDisplayScale, scaleY: cropDisplayScale, selectable: false, evented: false });
   cropFabricCanvas.add(bgImage);
 
   // Default selection: the middle 60% of the image.
   const selW = displayWidth * 0.6;
   const selH = displayHeight * 0.6;
   cropSelectionRect = new Rect({
+    originX: 'left', // the crop math below reads left/top as the top-left corner
+    originY: 'top',
     left: (displayWidth - selW) / 2,
     top: (displayHeight - selH) / 2,
     width: selW,
@@ -2415,6 +2570,19 @@ function renderPngtuberProperties(item, body) {
   // this app's own mic capture (see loadObsInputsIntoSelect() below).
   const audioSourceHtml = isObsSource ? `
     <div class="field">
+      <label>OBS connection</label>
+      <div class="field-row">
+        <div class="field"><label for="pf-obsHost">Host</label><input type="text" id="pf-obsHost" value="127.0.0.1" spellcheck="false"></div>
+        <div class="field"><label for="pf-obsPort">Port</label><input type="number" id="pf-obsPort" min="1" max="65535" value="4455"></div>
+      </div>
+      <div class="field"><label for="pf-obsPassword">Password</label><input type="password" id="pf-obsPassword" autocomplete="off" spellcheck="false" placeholder="Leave empty if OBS has no password"></div>
+      <div class="button-row">
+        <button class="secondary" id="pf-obsConnectBtn" type="button">Connect / Test</button>
+      </div>
+      <div class="hint" id="pf-obsConnStatus">Checking saved OBS connection…</div>
+      <div class="hint" id="pf-obsRelayStatus"></div>
+    </div>
+    <div class="field">
       <label>OBS audio input</label>
       <select id="pf-obsInputSelect">
         <option value="">${p.obsInputName ? escapeHtml(p.obsInputName) : 'Choose an input…'}</option>
@@ -2425,6 +2593,8 @@ function renderPngtuberProperties(item, body) {
       <div class="hint" id="pf-obsInputStatus">Connecting to OBS…</div>
     </div>
   ` : `
+    <div class="hint-warn"><strong>Experimental - OBS usually blocks microphone access for browser sources.</strong> The baked source may never get a microphone prompt, so this mode often can't work. Launching OBS with <code>--enable-media-stream</code> may help but isn't guaranteed on current versions.</div>
+    <div class="hint">Suggestion: switch to OBS audio above - it reads the same level straight from OBS and doesn't need a permission prompt.</div>
     <div class="field">
       <label>Mic level</label>
       <div class="mic-meter">
@@ -2448,8 +2618,8 @@ function renderPngtuberProperties(item, body) {
     </div>
     ${stylePropsHtml}
     <div class="field">
-      <label><input type="checkbox" id="pf-audioSourceObs" ${isObsSource ? 'checked' : ''}> React to an OBS audio source instead of microphone</label>
-      <div class="hint">Reacts to a live OBS input's volume (mic, Discord audio, game audio — your choice) instead of this app's own microphone capture, and reads the sensitivity slider below live from the project file so changes take effect without re-baking. Needs Stream Composer Suite running alongside OBS.</div>
+      <label><input type="checkbox" id="pf-audioSourceObs" ${isObsSource ? 'checked' : ''}> Use OBS audio (recommended)</label>
+      <div class="hint">Reacts to a live OBS input's volume (mic, Discord audio, game audio — your choice) and reads the sensitivity slider below live from the project file so changes take effect without re-baking. Needs Stream Composer Suite running alongside OBS, connected to OBS's WebSocket server. Unticking this switches to the experimental microphone mode.</div>
     </div>
     <div class="field">
       <label>Mic sensitivity (<span id="pf-micThresholdValue">${p.micThreshold}</span>%)</label>
@@ -2464,7 +2634,7 @@ function renderPngtuberProperties(item, body) {
     </div>
     <div class="hint">${isObsSource
       ? 'This reaction only runs in the baked output (in OBS) — it needs Stream Composer Suite running alongside OBS to keep reading the live volume and threshold.'
-      : 'The mic reaction itself only runs in the baked output (in OBS) — the meter above is just an editor-side preview to help you tune the sensitivity. The first time the baked scene loads in OBS, you\'ll need to grant it microphone access separately: right-click the Browser Source → Interact → allow the microphone prompt, then refresh.'}</div>
+      : 'The mic reaction itself only runs in the baked output (in OBS) — the meter above is just an editor-side preview to help you tune the sensitivity. OBS usually offers the baked source no microphone permission at all (right-click → Interact has no prompt), which is why OBS audio is the recommended mode.'}</div>
   `;
 
   document.getElementById('pf-pngtuberStyle').addEventListener('change', (e) => {
@@ -2581,25 +2751,30 @@ function renderPngtuberProperties(item, body) {
       testBtn.disabled = false;
     });
   } else {
-    // 'obs' mode: populate the OBS input dropdown via the same persisted
-    // connection settings the Push-to-OBS dialog uses (loadObsSettings()).
+    // 'obs' mode: an inline connection form (same obs-settings.json the
+    // Push-to-OBS dialog uses, via loadObsSettings()/saveObsSettings()) plus
+    // the input dropdown it feeds. The persistent relay (src-tauri's
+    // spawn_obs_volume_relay) only ever reads that file, so a connect that
+    // succeeds here is also what makes the relay work - see connectAndListInputs.
     // obs_list_inputs returns { name, kind }[] (kind is only used server-side
     // to filter to audio-capable inputs) - use input.name everywhere below.
     const obsSelect = document.getElementById('pf-obsInputSelect');
-    const obsStatusEl = document.getElementById('pf-obsInputStatus');
+    const connStatusEl = document.getElementById('pf-obsConnStatus');
+    const hostEl = document.getElementById('pf-obsHost');
+    const portEl = document.getElementById('pf-obsPort');
+    const passwordEl = document.getElementById('pf-obsPassword');
+    const connectBtn = document.getElementById('pf-obsConnectBtn');
+    const obsInputStatusEl = document.getElementById('pf-obsInputStatus');
 
-    async function loadObsInputs() {
-      obsStatusEl.textContent = 'Connecting to OBS…';
-      const saved = await loadObsSettings();
-      const usedHost = saved?.host || '127.0.0.1';
-      const usedPort = saved?.port || 4455;
-      const usedPassword = saved?.password || null;
+    async function connectAndListInputs() {
+      const host = hostEl.value.trim() || '127.0.0.1';
+      const port = parseInt(portEl.value, 10) || 4455;
+      const password = passwordEl.value || null;
+      connectBtn.disabled = true;
+      connStatusEl.textContent = 'Connecting to OBS…';
+      obsInputStatusEl.textContent = '';
       try {
-        const inputs = await invoke('obs_list_inputs', {
-          host: usedHost,
-          port: usedPort,
-          password: usedPassword,
-        });
+        const inputs = await invoke('obs_list_inputs', { host, port, password });
         if (!document.getElementById('pf-obsInputSelect')) return; // panel switched away while awaiting connection
         const options = ['<option value="">Choose an input…</option>']
           .concat(inputs.map((input) => `<option value="${escapeHtml(input.name)}">${escapeHtml(input.name)}</option>`));
@@ -2614,31 +2789,62 @@ function renderPngtuberProperties(item, body) {
         }
         obsSelect.value = toSelect;
         if (toSelect !== p.obsInputName) p.obsInputName = toSelect;
-        obsStatusEl.textContent = `Connected — found ${inputs.length} input${inputs.length === 1 ? '' : 's'}.`;
-        // A successful connect here proves usedHost/usedPort/usedPassword are
-        // correct for the user's actual OBS instance right now. The
-        // PERSISTENT relay (src-tauri's spawn_obs_volume_relay) only ever
-        // reads obs-settings.json though - it never sees whatever this
-        // panel just connected with unless that's also what's on disk.
-        // Without this, a user who's never opened the Push-to-OBS dialog
-        // (so obs-settings.json doesn't exist, or is stale) gets a working
-        // input dropdown here while the relay retries forever with nothing
-        // to go on - obsConnected stuck false with no obvious cause. Keep
-        // it opportunistic: only write when something would actually
-        // change, same "don't touch disk unless needed" discipline
-        // saveProject() already follows elsewhere.
-        if (!saved || saved.host !== usedHost || saved.port !== usedPort || (saved.password || null) !== usedPassword) {
-          await saveObsSettings({ host: usedHost, port: usedPort, password: usedPassword });
+        connStatusEl.textContent = `Connected to OBS at ${host}:${port}.`;
+        obsInputStatusEl.textContent = `Found ${inputs.length} audio input${inputs.length === 1 ? '' : 's'}.`;
+        // A successful connect proves these credentials are right for the
+        // user's actual OBS right now; the relay only ever reads the file, so
+        // persist them whenever they differ from what's on disk. Only write
+        // when something would actually change.
+        const saved = await loadObsSettings();
+        if (!saved || saved.host !== host || saved.port !== port || (saved.password || null) !== password) {
+          await saveObsSettings({ host, port, password });
         }
+        refreshRelayStatus();
       } catch (err) {
-        if (!document.getElementById('pf-obsInputStatus')) return; // panel switched away while awaiting connection
-        obsStatusEl.textContent = 'Could not connect to OBS: ' + err + ' — check that OBS is running with the WebSocket server enabled (Tools → WebSocket Server Settings).';
+        if (!document.getElementById('pf-obsConnStatus')) return;
+        connStatusEl.textContent = describeObsConnectError(err);
+      } finally {
+        connectBtn.disabled = false;
       }
     }
 
+    // Live "relay connected" line. The relay retries on its own backoff (up
+    // to 10s) after the settings file changes, so poll while this panel is up.
+    async function refreshRelayStatus() {
+      const relayEl = document.getElementById('pf-obsRelayStatus');
+      if (!relayEl) return;
+      try {
+        const connected = await invoke('obs_relay_status');
+        if (!document.getElementById('pf-obsRelayStatus')) return;
+        document.getElementById('pf-obsRelayStatus').textContent = connected
+          ? 'Audio relay connected - the baked source can read OBS levels.'
+          : 'Audio relay not connected yet - connect above, and keep Stream Composer Suite running while you stream.';
+      } catch (err) {
+        console.warn('Could not read the OBS relay status:', err);
+      }
+    }
+    clearInterval(obsRelayPollTimer);
+    obsRelayPollTimer = setInterval(() => {
+      if (!document.getElementById('pf-obsRelayStatus')) { clearInterval(obsRelayPollTimer); return; }
+      refreshRelayStatus();
+    }, 2000);
+    refreshRelayStatus();
+
     obsSelect.addEventListener('change', (e) => { p.obsInputName = e.target.value; });
-    document.getElementById('pf-obsRefreshInputsBtn').addEventListener('click', loadObsInputs);
-    loadObsInputs();
+    connectBtn.addEventListener('click', connectAndListInputs);
+    document.getElementById('pf-obsRefreshInputsBtn').addEventListener('click', connectAndListInputs);
+
+    // Pre-fill the form from the saved settings, then try them straight away.
+    (async () => {
+      const saved = await loadObsSettings();
+      if (!document.getElementById('pf-obsHost')) return;
+      if (saved) {
+        hostEl.value = saved.host || '127.0.0.1';
+        portEl.value = saved.port || 4455;
+        passwordEl.value = saved.password || '';
+      }
+      connectAndListInputs();
+    })();
   }
 
   const applyGeneral = () => {
@@ -2963,11 +3169,32 @@ async function copyAssetsAndBuildScene(outputFolder, projectOverride) {
     await invoke('write_binary_file', { path: destPath, base64Data: base64 });
     assetPathsById[copy.itemId] = copy.destRelativePath;
   }
-  if (assetCopies.length > 0) {
+  // Setup/permission/error text is never drawn into the baked page, so what
+  // each item needs goes into the README instead (and the post-export popup).
+  const notes = buildExportNotes(targetProject.items);
+  if (assetCopies.length > 0 || notes.length > 0) {
     const readmePath = joinPath(outputFolder, `assets${sepFor(outputFolder)}README.txt`);
-    await invoke('write_text_file', { path: readmePath, contents: ASSETS_README_TEXT });
+    const readme = (assetCopies.length > 0 ? ASSETS_README_TEXT : '') + (notes.length > 0 ? (assetCopies.length > 0 ? '\r\n' : '') + exportNotesToText(notes) : '');
+    await invoke('write_text_file', { path: readmePath, contents: readme });
   }
-  return buildSceneHtml(targetProject, assetPathsById);
+  return { html: buildSceneHtml(targetProject, assetPathsById), notes };
+}
+
+// Popup shown after a bake/export when any exported item needs something
+// done before it works in OBS (see export-notes.js).
+function showExportNotesDialog(notes) {
+  if (!notes || notes.length === 0) return;
+  const body = document.getElementById('exportNotesBody');
+  body.innerHTML = notes.map((note) => `
+    <div class="export-note">
+      <h3>${escapeHtml(note.label)}</h3>
+      <ul>
+        ${note.problems.map((s) => `<li class="problem">${escapeHtml(s)}</li>`).join('')}
+        ${note.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+  document.getElementById('exportNotesDialog').showModal();
 }
 
 // ---- EXPORT SINGLE ITEM AS ITS OWN SOURCE ---------------------------------
@@ -3021,12 +3248,13 @@ async function exportItemAsSource(itemId) {
         canvasHeight: Math.max(1, Math.round(item.height)),
         items: [{ ...item, x: 0, y: 0, zIndex: 0 }],
       };
-      const html = await copyAssetsAndBuildScene(outputFolder, soloProject);
+      const { html, notes } = await copyAssetsAndBuildScene(outputFolder, soloProject);
       const htmlPath = joinPath(outputFolder, `${safeName}.html`);
       await invoke('write_text_file', { path: htmlPath, contents: html });
       const readmePath = joinPath(outputFolder, 'README.txt');
-      await invoke('write_text_file', { path: readmePath, contents: exportItemReadmeText(safeName, soloProject.canvasWidth, soloProject.canvasHeight) });
+      await invoke('write_text_file', { path: readmePath, contents: exportItemReadmeText(safeName, soloProject.canvasWidth, soloProject.canvasHeight) + (notes.length > 0 ? '\r\n' + exportNotesToText(notes) : '') });
       setStatus(`Saved ${htmlPath} — add it to OBS as its own Browser Source (Width=${soloProject.canvasWidth} Height=${soloProject.canvasHeight} to start). It's independent of every other export, so you can freely resize, reposition, and layer it against your webcam or game capture. See the README.txt saved alongside it.`, 'ok');
+      showExportNotesDialog(notes);
     }
   } catch (err) {
     setStatus('Export failed: ' + err, 'err');
@@ -3100,9 +3328,9 @@ async function bakeProject(forceNewFolder) {
     sceneName = sanitizeSceneName(typed);
   }
 
-  let html;
+  let html, notes;
   try {
-    html = await copyAssetsAndBuildScene(outputFolder);
+    ({ html, notes } = await copyAssetsAndBuildScene(outputFolder));
   } catch (err) {
     setStatus('Couldn\'t copy an image asset while baking: ' + err, 'err');
     return;
@@ -3121,6 +3349,7 @@ async function bakeProject(forceNewFolder) {
 
   setStatus('Baked to ' + scenePath + ' — add this as an OBS Browser Source, ' +
     project.canvasWidth + 'x' + project.canvasHeight + '.', 'ok');
+  showExportNotesDialog(notes);
 }
 
 function obsSetupInstructions() {
@@ -3140,6 +3369,18 @@ function obsSetupInstructions() {
 // last pushed to for THIS project is saved on the project itself
 // (project.obsSceneName) so re-pushing doesn't re-ask every time.
 let obsSettingsFilePath = null;
+
+// Interval handle for the PNGTuber panel's live relay-status line; cleared on
+// every panel render so a rebuilt panel never leaves a stale poller behind.
+let obsRelayPollTimer = null;
+
+// Turns a raw obs_list_inputs error into what to actually do about it. The
+// likeliest causes, in order: OBS isn't running, its WebSocket server is off,
+// or authentication is on and no (or the wrong) password was entered.
+function describeObsConnectError(err) {
+  return 'Could not connect to OBS (' + err + '). Make sure OBS is running, then in OBS open Tools → WebSocket Server Settings, tick "Enable WebSocket server", ' +
+    'and (if "Enable Authentication" is on) click "Show Connect Info", copy the Server Password into the Password box above, and press Connect / Test again.';
+}
 
 async function loadObsSettings() {
   try {
@@ -3275,7 +3516,7 @@ async function previewItem(item) {
   const syntheticProject = { canvasWidth: item.width, canvasHeight: item.height, items: [{ ...item, x: 0, y: 0 }] };
   let html;
   try {
-    html = await copyAssetsAndBuildScene(previewFolder, syntheticProject);
+    ({ html } = await copyAssetsAndBuildScene(previewFolder, syntheticProject));
   } catch (err) {
     setStatus('Couldn\'t prepare the preview: ' + err, 'err');
     return;
@@ -3864,6 +4105,9 @@ window.addEventListener('DOMContentLoaded', () => {
     stingerBuilderBtn: document.getElementById('stingerBuilderBtn'),
     backgroundGeneratorBtn: document.getElementById('backgroundGeneratorBtn'),
   };
+
+  wireCanvasContextMenuDismissal();
+  document.getElementById('exportNotesCloseBtn').addEventListener('click', () => document.getElementById('exportNotesDialog').close());
 
   wireNewProjectDialog();
   wireStarterKitDialog();

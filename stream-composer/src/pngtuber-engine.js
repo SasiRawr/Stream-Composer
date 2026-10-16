@@ -8,14 +8,14 @@
 // (RMS + threshold + hold-time debounce) - only what happens on a talking-
 // state change differs per style.
 //
-// Needs a live mic (getUserMedia) inside OBS's Browser Source - this is
-// the first item type in the app asking for a media permission, not just
-// network access like the Chat + TTS Overlay. OBS (27+) supports this,
-// but the Browser Source has to actually be granted mic access once
-// (right-click the source -> Interact, or OBS's own permission prompt) -
-// this is a real one-time setup step, not something this script can
-// bypass - flagged in the properties panel and the testing checklist,
-// not glossed over.
+// Two audio sources (props.audioSource): 'obs' (the default for new items)
+// reads a live OBS input's level through the local relay; 'mic' is
+// EXPERIMENTAL and asks the Browser Source for getUserMedia access, which
+// OBS usually refuses (right-click -> Interact offers no permission
+// prompt; launching OBS with --enable-media-stream may help but isn't
+// guaranteed). Setup and permission problems are only ever logged to the
+// console here - nothing is drawn into the stream; the app's own window
+// and the export README carry the instructions.
 //
 // No network, no live-connection risk - pure client-side audio analysis
 // against the streamer's own mic, same "no live-connection risk" category
@@ -118,12 +118,11 @@ export function buildPngtuberScript(instanceId, assets, props, itemId) {
       let level01 = 0;
       if (data && data.obsConnected && data.inputFound) {
         level01 = clampObsLevel01(data.level);
-        if (statusEl) statusEl.style.display = 'none';
-      } else if (statusEl) {
-        statusEl.style.display = 'block';
-        statusEl.textContent = (!data || !data.obsConnected)
+        note(null);
+      } else {
+        note((!data || !data.obsConnected)
           ? 'PNGTuber needs OBS connected in Stream Composer Suite to react to "' + OBS_INPUT_NAME + '".'
-          : 'PNGTuber cannot find the OBS input "' + OBS_INPUT_NAME + '" - check the name in the properties panel.';
+          : 'PNGTuber cannot find the OBS input "' + OBS_INPUT_NAME + '" - check the name in the properties panel.');
       }
       // The relay re-reads live micThreshold/holdMs from the project file
       // on every poll (see find_obs_item_settings in lib.rs) so a changed
@@ -142,16 +141,13 @@ export function buildPngtuberScript(instanceId, assets, props, itemId) {
     } catch (e) {
       // Local relay isn't reachable - almost always means Stream Composer
       // Suite itself isn't running on this PC right now, same "needs the
-      // sidecar alive" status pattern now-playing-engine.js uses. Feed a
+      // sidecar alive" pattern now-playing-engine.js uses. Feed a
       // silent level through the SAME state machine rather than special-
       // casing this into a different code path. No live response to read
       // a threshold/hold from here, so this falls back to the baked
       // constants same as every other item type already does when its
       // sidecar is unreachable.
-      if (statusEl) {
-        statusEl.style.display = 'block';
-        statusEl.textContent = 'PNGTuber needs Stream Composer Suite running on this PC to react to OBS audio.';
-      }
+      note('PNGTuber needs Stream Composer Suite running on this PC to react to OBS audio.');
       applyLevel(0, performance.now(), THRESHOLD, HOLD_MS);
     }
   }
@@ -189,11 +185,12 @@ export function buildPngtuberScript(instanceId, assets, props, itemId) {
       analyser.fftSize = 2048;
       dataArray = new Uint8Array(analyser.fftSize);
       source.connect(analyser);
-      if (statusEl) statusEl.style.display = 'none';
       frame();
     } catch (e) {
-      console.warn('PNGTuber: could not access the microphone - grant mic permission to this Browser Source (right-click it in OBS -> Interact, then allow) and refresh.', e);
-      if (statusEl) statusEl.textContent = 'Mic access needed - right-click this source in OBS, choose Interact, then allow microphone access and refresh.';
+      // Console only - nothing about setup or permissions is ever drawn
+      // into the stream. The Stream Composer Suite window and the README
+      // that ships with the bake carry the same instructions.
+      console.warn('PNGTuber: could not access the microphone. OBS usually blocks microphone access for browser sources; switch this item to "OBS audio" in Stream Composer Suite.', e);
     }
   }
 
@@ -213,7 +210,15 @@ export function buildPngtuberScript(instanceId, assets, props, itemId) {
 
   const imgEl = document.getElementById('${instanceId}-img');
   const mouthEl = document.getElementById('${instanceId}-mouth');
-  const statusEl = document.getElementById('${instanceId}-status');
+
+  // Setup/connection problems are logged to the browser console only, once
+  // per change - never drawn into the stream where viewers would see them.
+  let lastNote = null;
+  function note(message) {
+    if (message === lastNote) return;
+    lastNote = message;
+    if (message) console.warn(message);
+  }
 
   let isTalking = false;
   let lastLoudAt = 0;

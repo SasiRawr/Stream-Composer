@@ -82,7 +82,9 @@ Var WixDisplayVersion
 Var OldMainBinaryName
 
 Name "${PRODUCTNAME}"
-BrandingText "${COPYRIGHT}"
+; TNB CHANGE - the stock line shows "Nullsoft Install System" whenever the
+; bundle has no copyright string, which is always the case here.
+BrandingText "TheNerdyBox"
 OutFile "${OUTFILE}"
 
 ; We don't actually use this value as default install path,
@@ -191,6 +193,12 @@ Var TnbDarkBmp
 ; A Function rather than a !macro on purpose: both the Welcome and the Finish
 ; page call this, and expanding a macro twice would emit duplicate LogicLib
 ; labels.
+;
+; The caller passes the page's dialog handle in $R0 ($mui.WelcomePage or
+; $mui.FinishPage - the handle nsDialogs::Create returned to MUI2). Looking the
+; dialog up with FindWindow instead is not reliable: on the Finish page it did
+; not find the page, so none of the restyling below was applied and the page
+; kept MUI2's 164px sidebar with the 497px artwork squeezed into it.
 Function TnbApplyDarkPage
   Push $0
   Push $1
@@ -198,7 +206,7 @@ Function TnbApplyDarkPage
   Push $3
   Push $4
 
-  FindWindow $0 "#32770" "" $HWNDPARENT
+  StrCpy $0 $R0
   ${If} $0 <> 0
     ; Flat dark page first. This doubles as the fallback: if the bitmap resize
     ; below does not take effect, the page is still dark rather than half white.
@@ -230,6 +238,16 @@ Function TnbApplyDarkPage
         ${If} $1 == 1201
           SetCtlColors $4 "${TNB_PAGE_TITLE}" transparent
         ${Else}
+          ; Themed checkboxes ignore SetCtlColors for their text and paint a
+          ; grey band behind it (NSIS bug #443). Dropping the visual style
+          ; makes them honour the colours below, same as the Welcome text.
+          ; Only the checkboxes - a plain label has no theme to drop.
+          System::Call "user32::GetWindowLong(p $4, i -16) i .r3"
+          IntOp $3 $3 & 0xF
+          ${If} $3 = 2 ; BS_CHECKBOX
+          ${OrIf} $3 = 3 ; BS_AUTOCHECKBOX
+            System::Call 'UXTHEME::SetWindowTheme(p $4, w " ", w " ")'
+          ${EndIf}
           SetCtlColors $4 "${TNB_PAGE_TEXT}" transparent
         ${EndIf}
       ${EndIf}
@@ -243,15 +261,19 @@ Function TnbApplyDarkPage
   Pop $0
 FunctionEnd
 
-Function TnbWelcomeShow
-  Call TnbApplyDarkPage
-FunctionEnd
-
 ; Installer pages, must be ordered as they appear
 ; 1. Welcome Page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW TnbWelcomeShow
 !insertmacro MUI_PAGE_WELCOME
+
+; Defined after the page macro on purpose: $mui.WelcomePage is declared by
+; MUI_PAGE_WELCOME, and a name used before its Var exists is silently taken as
+; a literal string, which left the Welcome page unstyled.
+Function TnbWelcomeShow
+  StrCpy $R0 $mui.WelcomePage
+  Call TnbApplyDarkPage
+FunctionEnd
 
 ; 2. License Page (if defined)
 !if "${LICENSE}" != ""
@@ -560,9 +582,10 @@ Var WebsiteCheckboxState
 Function FinishShowWebsiteCheckbox
   ${NSD_CreateCheckbox} 120u 130u 195u 10u "Check us out on the web"
   Pop $WebsiteCheckbox
+  ; Created before the call so the loop in there restyles it along with the
+  ; Run and desktop-shortcut checkboxes MUI2 already built.
+  StrCpy $R0 $mui.FinishPage
   Call TnbApplyDarkPage
-  ; After TnbApplyDarkPage so it is not overwritten by the loop in there.
-  SetCtlColors $WebsiteCheckbox "${TNB_PAGE_TEXT}" transparent
   ${NSD_SetState} $WebsiteCheckbox ${BST_CHECKED}
 FunctionEnd
 
@@ -577,8 +600,90 @@ Function RunMainBinary
   nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
 FunctionEnd
 
+; Uninstaller twin of TnbApplyDarkPage (an uninstaller may only call functions
+; named un.*). Kept identical so both wizards get the same full-logo treatment.
+Function un.TnbApplyDarkPage
+  Push $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+
+  StrCpy $0 $R0
+  ${If} $0 <> 0
+    ; Flat dark page first. This doubles as the fallback: if the bitmap resize
+    ; below does not take effect, the page is still dark rather than half white.
+    SetCtlColors $0 "${TNB_PAGE_TEXT}" "${TNB_PAGE_BG}"
+
+    ; Measure the page instead of assuming 497x314, so this holds at any DPI.
+    System::Call "*(i,i,i,i) p .r1"
+    System::Call "user32::GetClientRect(p $0, p r1)"
+    System::Call "*$1(i,i,i .r2,i .r3)"
+    System::Free $1
+
+    ; Stretch the branding over the whole page and drop it behind the text.
+    ; HWND_BOTTOM (1) keeps it under the sibling text controls; SWP_NOACTIVATE
+    ; (0x0010) stops it stealing focus. modern-wizard.bmp is the name MUI2
+    ; extracts MUI_WELCOMEFINISHPAGE_BITMAP to.
+    GetDlgItem $4 $0 1200
+    ${If} $4 <> 0
+    ${AndIf} $2 > 0
+      System::Call "user32::SetWindowPos(p $4, p 1, i 0, i 0, i $2, i $3, i 0x0010)"
+      ${NSD_SetStretchedImage} $4 "$PLUGINSDIR\modern-wizard.bmp" $TnbDarkBmp
+    ${EndIf}
+
+    ; Light text on a transparent background so the artwork shows through.
+    ; 1201 is the heading, 1202 the body; anything after that is a checkbox
+    ; the Finish page adds. Missing ids simply return 0 and are skipped.
+    ${For} $1 1201 1206
+      GetDlgItem $4 $0 $1
+      ${If} $4 <> 0
+        ${If} $1 == 1201
+          SetCtlColors $4 "${TNB_PAGE_TITLE}" transparent
+        ${Else}
+          ; Themed checkboxes ignore SetCtlColors for their text and paint a
+          ; grey band behind it (NSIS bug #443). Dropping the visual style
+          ; makes them honour the colours below, same as the Welcome text.
+          ; Only the checkboxes - a plain label has no theme to drop.
+          System::Call "user32::GetWindowLong(p $4, i -16) i .r3"
+          IntOp $3 $3 & 0xF
+          ${If} $3 = 2 ; BS_CHECKBOX
+          ${OrIf} $3 = 3 ; BS_AUTOCHECKBOX
+            System::Call 'UXTHEME::SetWindowTheme(p $4, w " ", w " ")'
+          ${EndIf}
+          SetCtlColors $4 "${TNB_PAGE_TEXT}" transparent
+        ${EndIf}
+      ${EndIf}
+    ${Next}
+  ${EndIf}
+
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+Function un.TnbWelcomeShow
+  StrCpy $R0 $mui.WelcomePage
+  Call un.TnbApplyDarkPage
+FunctionEnd
+
+Function un.TnbFinishShow
+  StrCpy $R0 $mui.FinishPage
+  Call un.TnbApplyDarkPage
+FunctionEnd
+
 ; Uninstaller Pages
 ; 1. Confirm uninstall page
+; Uninstaller pages mirror the installer: dark Welcome and Finish pages around
+; the standard Confirm and progress pages.
+; 0. Welcome page
+!define MUI_UNWELCOMEFINISHPAGE_BITMAP "${SIDEBARIMAGE}"
+!define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipIfPassive
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.TnbWelcomeShow
+!insertmacro MUI_UNPAGE_WELCOME
+
 Var DeleteAppDataCheckbox
 Var DeleteAppDataCheckboxState
 !define /ifndef WS_EX_LAYOUTRTL         0x00400000
@@ -621,6 +726,11 @@ FunctionEnd
 
 ; 2. Uninstalling Page
 !insertmacro MUI_UNPAGE_INSTFILES
+
+; 3. Finish page
+!define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipIfPassive
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.TnbFinishShow
+!insertmacro MUI_UNPAGE_FINISH
 
 ;Languages
 {{#each languages}}

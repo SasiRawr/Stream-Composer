@@ -4,6 +4,53 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.19.0 — 2026-10-15 (pre-release, pending verification)
+
+What you see in the editor is now exactly what shows up in OBS, plus a
+right-click menu, a PNGTuber that works with OBS out of the box, and a fully
+branded installer and uninstaller.
+
+### Added
+- **Right-click menu on the canvas.** Right-click any item for Center on
+  canvas, Center horizontally, Center vertically, Stretch to canvas, Fit to
+  canvas (keeps its proportions), Bring to front, Bring forward, Send
+  backward, Send to back, Export as its own source, and Delete.
+- **"Before you go live" checklist after every export.** It lists exactly
+  what each exported piece needs to work in OBS, and warns about mistakes
+  such as a PNGTuber with no image (which would be invisible). The same notes
+  are saved in the README next to your export.
+- **OBS connection right in the PNGTuber panel.** Enter your OBS WebSocket
+  host, port and password, press Connect / Test, and pick your audio input
+  from the list. A live line shows whether the PNGTuber can hear OBS.
+- **The uninstaller now has branded Welcome and Finish screens** that match
+  the installer.
+
+### Changed
+- **New PNGTubers react to an OBS audio source by default.** OBS normally
+  blocks microphone access for browser sources, so the old default could not
+  work for most people. Microphone mode is still available, clearly marked
+  as experimental.
+- **Nothing setup-related is ever drawn into your stream any more.**
+  Messages such as "Mic access needed" used to appear inside the browser
+  source itself, on top of your scene. They now appear in the app and the
+  README instead.
+- The installer and uninstaller now say "TheNerdyBox" at the bottom instead
+  of "Nullsoft Install System".
+
+### Fixed
+- **Items now appear in OBS exactly where you placed them in the editor.**
+  Previously the editor drew every item shifted up and to the left by half
+  its own size, so new items looked off-center and exported scenes didn't
+  match what you'd laid out. Projects saved with earlier versions are
+  converted automatically when you open them, so everything stays where you
+  saw it.
+- **New items are added in the center of the canvas.**
+- **The installer's Finish screen** is now dark and fully branded like the
+  Welcome screen, with the artwork no longer squished and the "Check us out
+  on the web" option matching the others.
+- **Dialogs such as New Project and Save to Library** now open centered in
+  the window instead of pinned to the top-left corner.
+
 ## v1.18.3 — 2026-09-01 (pre-release, pending verification)
 
 One installer instead of two, fully branded — and it now cleans up properly

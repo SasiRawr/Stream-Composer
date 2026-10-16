@@ -27,7 +27,7 @@ assert(script.includes("document.getElementById('nowplaying-item1-0-wrap')"), 'r
 assert(script.includes("document.getElementById('nowplaying-item1-0-title')"), 'references the correct title element id for this instance');
 assert(script.includes("document.getElementById('nowplaying-item1-0-artist')"), 'references the correct artist element id for this instance');
 assert(script.includes("document.getElementById('nowplaying-item1-0-album')"), 'references the correct album element id for this instance');
-assert(script.includes("document.getElementById('nowplaying-item1-0-status')"), 'references the correct status element id for this instance');
+assert(!script.includes('-status') && !script.includes('statusEl'), 'draws no status element - an unreachable app is logged to the console only, never shown on stream');
 assert(script.includes("REFRESH_MS = 3000"), 'the configured refresh interval is baked into the output');
 assert(script.includes('SHOW_ALBUM = true'), 'the configured show-album setting is baked into the output');
 assert(script.includes("http://127.0.0.1:5759/"), 'polls the local now-playing server on the correct port');

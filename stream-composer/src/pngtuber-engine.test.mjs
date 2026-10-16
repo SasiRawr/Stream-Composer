@@ -28,7 +28,7 @@ const swapScript = buildPngtuberScript('pngtuber-item1-0', {
 }, { style: 'swap', micThreshold: 15, holdMs: 200 });
 
 assert(swapScript.includes("document.getElementById('pngtuber-item1-0-img')"), 'swap: references the correct image element id for this instance');
-assert(swapScript.includes("document.getElementById('pngtuber-item1-0-status')"), 'swap: references the correct status/permission-hint element id for this instance');
+assert(!swapScript.includes('-status') && !swapScript.includes('statusEl'), 'swap: draws no status/permission-hint element - nothing about setup is ever shown on stream');
 assert(swapScript.includes('IDLE_SRC = "assets/pngtuber-item1-0-idle.png"'), 'swap: the idle image asset path is baked into the output');
 assert(swapScript.includes('TALKING_SRC = "assets/pngtuber-item1-0-talking.png"'), 'swap: the talking image asset path is baked into the output');
 assert(swapScript.includes('THRESHOLD = 0.15'), 'swap: a 15% sensitivity setting converts to a 0-1 threshold correctly');
@@ -36,7 +36,7 @@ assert(swapScript.includes('HOLD_MS = 200'), 'swap: the configured hold time is 
 assert(swapScript.includes('getUserMedia'), 'swap: requests microphone access via getUserMedia');
 assert(swapScript.includes('createAnalyser'), 'swap: uses the Web Audio API AnalyserNode for volume detection');
 assert(swapScript.includes('requestAnimationFrame'), 'swap: uses requestAnimationFrame for the analysis loop, not a fixed setInterval');
-assert(swapScript.includes('right-click this source in OBS'), 'swap: gives a real, actionable hint if mic access is denied/unavailable, not a silent failure');
+assert(swapScript.includes("console.warn('PNGTuber: could not access the microphone"), 'swap: a denied/unavailable mic is logged to the console (never drawn on stream) rather than failing silently');
 assert(swapScript.includes("imgEl.src = talking ? TALKING_SRC : IDLE_SRC"), 'swap: setTalking swaps the image src, not a class toggle');
 checkSyntax(swapScript, 'swap');
 

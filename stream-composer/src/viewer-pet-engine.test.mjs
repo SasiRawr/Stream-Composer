@@ -38,7 +38,8 @@ assert(kickSyntaxError === null, `Kick-configured script is syntactically valid 
 
 const noChannelScript = buildViewerPetScript('pet-item3-2', 'assets/pet-item3-2.png', { platformKey: 'twitch', channelName: '' });
 assert(!noChannelScript.includes('connectTwitch(CHANNEL)') && !noChannelScript.includes('connectKick(CHANNEL)'), 'no connect call happens at all when no channel name is set, regardless of platform');
-assert(noChannelScript.includes('No channel name set'), 'a real, visible status message explains why nothing is connecting');
+assert(noChannelScript.includes("console.warn('No channel name set"), 'explains why nothing is connecting via a console warning only, never visible text');
+assert(!noChannelScript.includes('statusEl'), 'draws no status element');
 
 const defaultPlatformScript = buildViewerPetScript('pet-item4-3', 'a.png', { channelName: 'x' });
 assert(defaultPlatformScript.includes('PLATFORM = "twitch"'), 'an unset platformKey defaults to Twitch');

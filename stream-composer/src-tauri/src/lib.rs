@@ -649,6 +649,15 @@ fn spawn_obs_volume_relay(app: tauri::AppHandle, state: Arc<ObsVolumeRelayState>
     });
 }
 
+/// Whether the background relay above currently has a live OBS connection,
+/// for the PNGTuber properties panel's status line. Asking also starts the
+/// relay if nothing has yet (it normally waits for the first baked-page
+/// request), so a freshly saved obs-settings.json is picked up right away.
+#[tauri::command]
+fn obs_relay_status(app: tauri::AppHandle) -> bool {
+    obs_volume_relay_state(&app).connected.load(Ordering::Relaxed)
+}
+
 const OBS_VOLUME_METER_SERVER_PORT: u16 = 5760;
 
 /// Tracks the currently-open project's project.json path, mirrored from the
@@ -1346,6 +1355,7 @@ pub fn run() {
             obs_list_scenes,
             obs_push_scene,
             obs_list_inputs,
+            obs_relay_status,
             preview_overlay,
             copy_to_clipboard,
             kokoro_model_status,

@@ -33,6 +33,32 @@ Source. Includes:
 
 Renamed from `scene-composer/` as part of the v1.0.0 merge.
 
+#### PNGTuber and audio
+
+PNGTuber items react to **OBS audio** by default: they read the live level
+of an OBS input (your mic, Discord, game audio - your choice) through
+Stream Composer Suite. To use it:
+
+1. In OBS, open **Tools → WebSocket Server Settings** and enable the
+   WebSocket server. If authentication is on, click **Show Connect Info**
+   and copy the server password.
+2. Select the PNGTuber item, and in its properties panel enter the host,
+   port (4455 by default) and password under **OBS connection**, then
+   press **Connect / Test**. The panel shows whether the audio relay is
+   connected and lets you pick the OBS audio input.
+3. Keep Stream Composer Suite running while you stream.
+
+A **microphone** mode is still available but is experimental: OBS usually
+blocks microphone access for browser sources (right-click → Interact offers
+no permission prompt), so it often cannot work. Launching OBS with
+`--enable-media-stream` may help on some versions but is not guaranteed.
+
+Nothing about setup, permissions or connection problems is ever drawn into
+the baked source - viewers never see it. Instead, Stream Composer Suite
+shows a "Before you go live" popup after each bake/export listing what each
+item needs, and writes the same notes into the README that ships with the
+export.
+
 ### `app/` — Popup Slide Editor (retired, kept as a fallback for now)
 
 The original standalone desktop app for the classic "popup slide"

@@ -52,9 +52,9 @@ export function buildNowPlayingScript(instanceId, props) {
   const titleEl = document.getElementById('${instanceId}-title');
   const artistEl = document.getElementById('${instanceId}-artist');
   const albumEl = document.getElementById('${instanceId}-album');
-  const statusEl = document.getElementById('${instanceId}-status');
 
   let lastKey = null;
+  let unreachableLogged = false;
 
   // One atomic "apply this now-playing state" entry point, same
   // discipline every other engine module in this app uses - text
@@ -81,14 +81,15 @@ export function buildNowPlayingScript(instanceId, props) {
       if (!res.ok) throw new Error('bad response');
       const info = await res.json();
       applyState(info);
-      if (statusEl) statusEl.style.display = 'none';
+      unreachableLogged = false;
     } catch (e) {
       // Local server isn't reachable - almost always means Stream
-      // Composer Suite itself isn't running on this PC right now.
+      // Composer Suite itself isn't running on this PC right now. Console
+      // only (once per outage): the card just stays hidden on stream.
       wrapEl.classList.remove('is-visible');
-      if (statusEl) {
-        statusEl.style.display = 'block';
-        statusEl.textContent = 'Now Playing needs Stream Composer Suite running on this PC.';
+      if (!unreachableLogged) {
+        unreachableLogged = true;
+        console.warn('Now Playing needs Stream Composer Suite running on this PC.');
       }
     }
   }

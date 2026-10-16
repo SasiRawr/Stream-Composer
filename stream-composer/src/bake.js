@@ -256,11 +256,11 @@ function renderCountdownTimerItem(item, instanceId) {
 
 // ---- PNGTUBER --------------------------------------------------------
 // Asset paths come from collectAssetCopies() below, same lookup-by-
-// compound-key pattern popup-slide's custom icons use. The status/
-// permission-hint text sits UNDER the image (not overlapping it) so it's
-// readable even before the streamer has resized the item to fit their
-// actual character art. DOM/CSS shape differs by props.style - see
-// pngtuber-engine.js's header comment for what each style does.
+// compound-key pattern popup-slide's custom icons use. No status or
+// permission text is ever rendered here - setup problems go to the
+// console and to the app's own export notes. DOM/CSS shape differs by
+// props.style - see pngtuber-engine.js's header comment for what each
+// style does.
 function renderPngtuberItem(item, instanceId, assetPathsById) {
   const p = item.props;
   const style = p.style || 'swap';
@@ -269,7 +269,6 @@ function renderPngtuberItem(item, instanceId, assetPathsById) {
   const bodyAssetPath = assetPathsById[`${item.id}::body`] || '';
   const mouthOpenAssetPath = assetPathsById[`${item.id}::mouthOpen`] || '';
   const mouthClosedAssetPath = assetPathsById[`${item.id}::mouthClosed`] || '';
-  const statusStyle = `font-family: 'Inter', sans-serif; font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; margin-top: 6px;`;
 
   let html;
   if (style === 'mouthFlap') {
@@ -283,14 +282,12 @@ function renderPngtuberItem(item, instanceId, assetPathsById) {
     #${instanceId}-stage { position: relative; width: 100%; flex: 1; display: flex; align-items: center; justify-content: center; }
     #${instanceId}-body { max-width: 100%; max-height: 100%; object-fit: contain; }
     #${instanceId}-mouth { position: absolute; width: ${mouthWidth}%; left: ${mouthLeft}%; top: ${mouthTop}%; transform: translate(-50%, -50%); pointer-events: none; }
-    #${instanceId}-status { ${statusStyle} }
   </style>
   <div id="${instanceId}-wrap">
     <div id="${instanceId}-stage">
       <img id="${instanceId}-body" src="${escapeHtml(bodyAssetPath)}" alt="">
       <img id="${instanceId}-mouth" src="${escapeHtml(mouthClosedAssetPath)}" alt="">
     </div>
-    <div id="${instanceId}-status"></div>
   </div>
 </div>`;
   } else if (style === 'bounce') {
@@ -305,11 +302,9 @@ function renderPngtuberItem(item, instanceId, assetPathsById) {
       50% { transform: translateY(-10%); }
       100% { transform: translateY(0); }
     }
-    #${instanceId}-status { ${statusStyle} }
   </style>
   <div id="${instanceId}-wrap">
     <img id="${instanceId}-img" src="${escapeHtml(idleAssetPath)}" alt="">
-    <div id="${instanceId}-status"></div>
   </div>
 </div>`;
   } else if (style === 'brightness') {
@@ -319,11 +314,9 @@ function renderPngtuberItem(item, instanceId, assetPathsById) {
     #${instanceId}-wrap { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     #${instanceId}-img { max-width: 100%; max-height: 100%; object-fit: contain; filter: brightness(0.72); transition: filter 0.15s ease; }
     #${instanceId}-img.is-talking { filter: brightness(1.25); }
-    #${instanceId}-status { ${statusStyle} }
   </style>
   <div id="${instanceId}-wrap">
     <img id="${instanceId}-img" src="${escapeHtml(idleAssetPath)}" alt="">
-    <div id="${instanceId}-status"></div>
   </div>
 </div>`;
   } else {
@@ -333,11 +326,9 @@ function renderPngtuberItem(item, instanceId, assetPathsById) {
   <style>
     #${instanceId}-wrap { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     #${instanceId}-img { max-width: 100%; max-height: 100%; object-fit: contain; }
-    #${instanceId}-status { ${statusStyle} }
   </style>
   <div id="${instanceId}-wrap">
     <img id="${instanceId}-img" src="${escapeHtml(idleAssetPath)}" alt="">
-    <div id="${instanceId}-status"></div>
   </div>
 </div>`;
   }
@@ -370,11 +361,9 @@ function renderViewerPetItem(item, instanceId, assetPathsById) {
       75% { transform: scale(1.04, 0.96) translateY(2px); }
       100% { transform: scale(1, 1); }
     }
-    #${instanceId}-status { font-family: 'Inter', sans-serif; font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; margin-top: 6px; }
   </style>
   <div id="${instanceId}-wrap">
     <img id="${instanceId}-img" src="${escapeHtml(petAssetPath)}" alt="">
-    <div id="${instanceId}-status"></div>
   </div>
 </div>`;
 
@@ -441,11 +430,9 @@ function renderPetRosterItem(item, instanceId, assetPathsById) {
       0% { transform: translate(0, 0) scale(0.4); opacity: 1; }
       100% { transform: translate(var(--star-dx), var(--star-dy)) scale(1.1); opacity: 0; }
     }
-    #${instanceId}-status { position: absolute; bottom: 4px; left: 4px; right: 4px; font-family: 'Inter', sans-serif; font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; }
   </style>
   <div id="${instanceId}-wrap">
     <div id="${instanceId}-stage"></div>
-    <div id="${instanceId}-status"></div>
   </div>
 </div>`;
 
@@ -473,7 +460,6 @@ function renderNowPlayingItem(item, instanceId) {
     #${instanceId}-title { font-size: 16px; font-weight: 700; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #${instanceId}-artist { font-size: 13px; color: #d6d4e8; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #${instanceId}-album { font-size: 11px; color: #918eae; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #${instanceId}-status { font-size: 12px; color: #f2f1f9; background: rgba(10,10,18,0.75); border-radius: 8px; padding: 6px 10px; text-align: center; display: none; }
   </style>
   <div id="${instanceId}-wrap">
     <div id="${instanceId}-eyebrow">Now Playing</div>
@@ -481,7 +467,6 @@ function renderNowPlayingItem(item, instanceId) {
     <div id="${instanceId}-artist"></div>
     <div id="${instanceId}-album"></div>
   </div>
-  <div id="${instanceId}-status"></div>
 </div>`;
 
   const script = buildNowPlayingScript(instanceId, item.props);

@@ -40,7 +40,7 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
   // "avoid leaving both connectors' call-site text in every output"
   // discipline established for chat-tts-engine.js and viewer-pet-engine.js.
   const dispatchCall = !channelName
-    ? "if (statusEl) statusEl.textContent = 'No channel name set for this Chat Pet Roster yet.';"
+    ? "console.warn('No channel name set for this Chat Pet Roster yet.');"
     : platform === 'kick'
       ? `connectKick(${JSON.stringify(channelName)});`
       : `connectTwitch(${JSON.stringify(channelName)});`;
@@ -55,7 +55,6 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
   const BUBBLE_MAX_CHARS = 80; // long chat messages truncate with an ellipsis rather than blowing out the bubble
 
   const stageEl = document.getElementById('${instanceId}-stage');
-  const statusEl = document.getElementById('${instanceId}-status');
 
   const pets = new Map(); // username -> { wrapperEl, imgEl, bubbleEl, x, y, vx, vy, size, lastActiveAt, bubbleHideTimer }
 
@@ -282,7 +281,7 @@ export function buildPetRosterScript(instanceId, petAssetPath, props) {
       const chatroomRes = await fetch('https://kick.com/api/v2/channels/' + channelSlug);
       const chatroomData = await chatroomRes.json();
       const chatroomId = chatroomData && chatroomData.chatroom && chatroomData.chatroom.id;
-      if (!chatroomId) { if (statusEl) statusEl.textContent = 'Could not resolve this Kick channel.'; return; }
+      if (!chatroomId) { console.warn('Could not resolve this Kick channel.'); return; }
       const ws = new WebSocket('wss://ws-us2.pusher.com/app/' + KICK_PUSHER_APP_KEY + '?protocol=7&client=js&version=7.4.0&flash=false');
       ws.onopen = function () {
         ws.send(JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel: 'chatrooms.' + chatroomId + '.v2' } }));

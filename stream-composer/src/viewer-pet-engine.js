@@ -31,7 +31,7 @@ export function buildViewerPetScript(instanceId, petAssetPath, props) {
   // the call, not just the always-present function definition" trap
   // this project's chat-tts-engine.js already had to work around once.
   const dispatchCall = !channelName
-    ? "if (statusEl) statusEl.textContent = 'No channel name set for this Viewer Pet yet.';"
+    ? "console.warn('No channel name set for this Viewer Pet yet.');"
     : platform === 'kick'
       ? `connectKick(${JSON.stringify(channelName)});`
       : `connectTwitch(${JSON.stringify(channelName)});`;
@@ -43,7 +43,6 @@ export function buildViewerPetScript(instanceId, petAssetPath, props) {
   const PET_SRC = ${JSON.stringify(petAssetPath)};
 
   const imgEl = document.getElementById('${instanceId}-img');
-  const statusEl = document.getElementById('${instanceId}-status');
 
   if (imgEl) imgEl.src = PET_SRC;
 
@@ -91,7 +90,7 @@ export function buildViewerPetScript(instanceId, petAssetPath, props) {
       const chatroomRes = await fetch('https://kick.com/api/v2/channels/' + channelSlug);
       const chatroomData = await chatroomRes.json();
       const chatroomId = chatroomData && chatroomData.chatroom && chatroomData.chatroom.id;
-      if (!chatroomId) { if (statusEl) statusEl.textContent = 'Could not resolve this Kick channel.'; return; }
+      if (!chatroomId) { console.warn('Could not resolve this Kick channel.'); return; }
       const ws = new WebSocket('wss://ws-us2.pusher.com/app/' + KICK_PUSHER_APP_KEY + '?protocol=7&client=js&version=7.4.0&flash=false');
       ws.onopen = function () {
         ws.send(JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel: 'chatrooms.' + chatroomId + '.v2' } }));
