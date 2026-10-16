@@ -27,6 +27,7 @@ import { applyFlip, applyRotate } from './transform.js';
 import { applySharpen } from './sharpen.js';
 import { applyVignette } from './vignette.js';
 import { PLATFORM_ICONS, platformIconSvg } from './popup-slide-icons.js';
+import { getMotionStyle, resolveMotionStyleId, listMotionStyles } from './motion-styles/index.js';
 import { parseSlidesText, slidesToPlaintext, evalConfig, legacyConfigToPopupSlideProps } from './popup-slide-import.js';
 import { gradientCoordsForAngle } from './gradient.js';
 import { STARTER_TEMPLATES, mergeStarterProjects, personalizeProject } from './starter-kit/manifest.js';
@@ -139,6 +140,7 @@ function defaultPropsFor(type) {
     return {
       contentMode: 'structured', // 'structured' | 'plaintext'
       slides: [{ tag: 'WEB', text: 'YourSite.com', iconMode: 'none' }],
+      animationStyle: 'classic', // 'classic' | 'deluxe' (see motion-styles/)
       transitionStyle: 'fade',
       perSlideMs: 2600,
       pauseMs: 500,
@@ -1807,8 +1809,18 @@ function renderPopupSlideProperties(item, body) {
   const p = item.props;
   if (!p.contentMode) p.contentMode = 'structured'; // tolerate projects saved before this field existed
 
+  const animationStyleId = resolveMotionStyleId('popup-slide', p.animationStyle);
+  const animationStyle = getMotionStyle('popup-slide', p.animationStyle);
+
   body.innerHTML = `
     <div class="field">
+      <label for="pf-animationStyle">Style</label>
+      <select id="pf-animationStyle">
+        ${listMotionStyles('popup-slide')
+          .map((m) => `<option value="${m.id}" ${m.id === animationStyleId ? 'selected' : ''}>${m.label}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field" id="pf-transitionStyleField" ${animationStyle.usesTransitionStyle ? '' : 'hidden'}>
       <label for="pf-transitionStyle">Text transition style</label>
       <select id="pf-transitionStyle">
         ${['fade', 'slide', 'slide-up', 'slide-down', 'zoom', 'none', 'random']
@@ -1951,10 +1963,13 @@ function renderPopupSlideProperties(item, body) {
   });
 
   const applyGeneral = () => {
+    p.animationStyle = document.getElementById('pf-animationStyle').value;
+    document.getElementById('pf-transitionStyleField').hidden = !getMotionStyle('popup-slide', p.animationStyle).usesTransitionStyle;
     p.transitionStyle = document.getElementById('pf-transitionStyle').value;
     p.perSlideMs = Math.round(parseFloat(document.getElementById('pf-perSlideSeconds').value) * 1000);
     p.pauseMs = Math.round(parseFloat(document.getElementById('pf-pauseSeconds').value) * 1000);
   };
+  document.getElementById('pf-animationStyle').addEventListener('change', applyGeneral);
   document.getElementById('pf-transitionStyle').addEventListener('change', applyGeneral);
   document.getElementById('pf-perSlideSeconds').addEventListener('change', applyGeneral);
   document.getElementById('pf-pauseSeconds').addEventListener('change', applyGeneral);

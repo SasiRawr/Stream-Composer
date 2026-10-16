@@ -4,6 +4,27 @@ All notable changes to Stream Composer Suite are documented here. See the
 [Releases page](https://github.com/SasiRawr/Stream-Composer/releases) to
 download any version.
 
+## v1.20.0 — 2026-10-16
+
+A new, more polished look for Popup Slides.
+
+### Added
+- **Deluxe style for Popup Slides.** Pick "Deluxe" in the new Style dropdown
+  and your slider gets a springy fly-in, an icon that pops with a glow and a
+  shine, a panel that unfurls, text that types in letter by letter, a thin
+  progress bar for each slide, an icon that flips between slides, and a smooth
+  exit. It uses your own slides, icons, colors and timing, works with
+  platform, custom image and no icons, and works offline.
+- Deluxe sliders replay from the first slide when you turn the source's eye
+  back on in OBS, same as Classic. You can mix Classic and Deluxe sliders, or
+  several Deluxe ones, in one scene.
+- The editor's Preview shows the Deluxe animation too, so it matches OBS.
+
+### Unchanged
+- Popup Slides stay on Classic unless you switch them, and existing projects
+  export exactly as before. The Text transition style option is hidden while
+  Deluxe is selected, since Deluxe has its own text animation.
+
 ## v1.19.0 — 2026-10-15 (pre-release, pending verification)
 
 What you see in the editor is now exactly what shows up in OBS, plus a
