@@ -35,9 +35,8 @@ assert(listed.length === 2 && listed[0].id === 'classic' && listed[1].id === 'de
 assert(listed[0].usesTransitionStyle === true && listed[1].usesTransitionStyle === false, 'only Classic uses the text transition style');
 
 // ---- Classic unchanged ----
-const golden = readFileSync(join(here, 'fixtures', 'popup-slide-classic.golden.html'), 'utf8').replace(/
-/g, '
-');
+// The fixture may be checked out with CRLF line endings on Windows
+const golden = readFileSync(join(here, 'fixtures', 'popup-slide-classic.golden.html'), 'utf8').replace(/\r\n/g, '\n');
 assert(buildSceneHtml(sampleProject, sampleAssets) === golden, 'a Classic sample item bakes byte-for-byte the same as before motion styles');
 {
   const explicit = structuredClone(sampleProject);
